@@ -75,6 +75,11 @@ def _root_is_btrfs():
     return False
 
 
+def root_is_btrfs():
+    """Public: True when the root filesystem is btrfs (used by the Start-here tab)."""
+    return _root_is_btrfs()
+
+
 def snapshot_backend():
     """Pick the snapshot tool by filesystem: snapper on a btrfs root, Timeshift otherwise.
 

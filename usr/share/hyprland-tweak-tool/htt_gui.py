@@ -13,6 +13,7 @@ import gi
 gi.require_version("Gtk", "4.0")
 from gi.repository import GLib, Gtk  # noqa: E402
 
+import htt_baseline  # noqa: E402
 import htt_setups  # noqa: E402
 import log  # noqa: E402
 
@@ -37,6 +38,22 @@ def _intro(text):
     lbl = Gtk.Label(label=text, xalign=0)
     lbl.add_css_class("plugin-desc")
     lbl.set_wrap(True)
+    return lbl
+
+
+_GREEN = "#4e9a06"
+_ORANGE = "#FFA500"
+
+
+def _state_markup(ok, yes, no):
+    """Return Pango markup colouring a yes/no state green when ok, orange otherwise."""
+    return f"<span foreground='{_GREEN if ok else _ORANGE}'>{yes if ok else no}</span>"
+
+
+def _status_label():
+    """Return an indented left-aligned label for a status row (markup set on refresh)."""
+    lbl = Gtk.Label(xalign=0)
+    lbl.set_margin_start(8)
     return lbl
 
 
@@ -375,6 +392,230 @@ class SetupsTab(_StatusMixin):
             self._set_status(f"Could not reboot: {exc} — reboot manually.", error=True)
 
 
+class StartHereTab(_StatusMixin):
+    """Set up a snapshot baseline to roll back to before experimenting with setups."""
+
+    def __init__(self):
+        self._status = None
+        self._status_timeout = 0
+        self._tool_labels = {}
+        self._tool_buttons = {}
+        self.widget = self._build()
+
+    def _build(self):
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(outer, f"set_margin_{side}")(14)
+        outer.append(_section("Start here — set up a baseline"))
+        outer.append(
+            _intro(
+                "Before you try any setup, set up a snapshot baseline you can return to. The "
+                "setups can change boot-critical parts of your system, and a snapshot is your "
+                "reliable way back to a working Kiro Hyprland."
+            )
+        )
+        if htt_baseline.is_btrfs_root():
+            self._build_btrfs(outer)
+        else:
+            self._build_fallback(outer)
+        outer.append(self._init_status())
+        return outer
+
+    # ── btrfs: the full snapper + grub-btrfs stack ───────────────────────────
+    def _build_btrfs(self, outer):
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_vexpand(True)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=8)
+
+        box.append(_section("Snapshot tools"))
+        for pkg in htt_baseline.PACKAGES:
+            box.append(self._tool_row(pkg))
+
+        box.append(_section("Status"))
+        self._summary_label = _status_label()
+        self._config_label = _status_label()
+        self._cleanup_label = _status_label()
+        self._maint_label = _status_label()
+        self._grub_label = _status_label()
+        for lbl in (self._summary_label, self._config_label, self._cleanup_label,
+                    self._maint_label, self._grub_label):
+            box.append(lbl)
+
+        box.append(_section("Setup"))
+        actions = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        self._enable_btn = Gtk.Button(label="Enable Kiro snapshots")
+        self._enable_btn.add_css_class("suggested-action")
+        self._enable_btn.set_tooltip_text("Install any missing tools, configure snapshots, and take a baseline")
+        self._enable_btn.connect("clicked", self._on_enable)
+        self._disable_btn = Gtk.Button(label="Disable Kiro snapshots")
+        self._disable_btn.set_tooltip_text("Remove the snapshot tools and config — snapshots already taken are kept")
+        self._disable_btn.connect("clicked", self._confirm_disable)
+        actions.append(self._enable_btn)
+        actions.append(self._disable_btn)
+        box.append(actions)
+
+        caveat = _intro(
+            "KIROTUX uses GRUB with grub-btrfs, so your pre-install snapshot appears as a bootable "
+            "entry in the GRUB menu (Arch Linux snapshots). If an experiment leaves you unable to "
+            "boot, pick it at boot and roll back — no live ISO needed. Btrfs Assistant also does "
+            "rollback from a running system."
+        )
+        box.append(caveat)
+
+        scrolled.set_child(box)
+        outer.append(scrolled)
+        self._refresh()
+
+    def _tool_row(self, pkg):
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=10)
+        label = Gtk.Label(xalign=0)
+        label.set_margin_start(8)
+        label.set_hexpand(True)
+        button = Gtk.Button(label=f"Install {pkg}")
+        button.connect("clicked", self._on_install_tool, pkg)
+        row.append(label)
+        row.append(button)
+        self._tool_labels[pkg] = label
+        self._tool_buttons[pkg] = button
+        return row
+
+    def _refresh(self):
+        any_installed = False
+        for pkg in htt_baseline.PACKAGES:
+            installed = htt_baseline.package_installed(pkg)
+            any_installed = any_installed or installed
+            self._tool_labels[pkg].set_markup(
+                f"<b>{pkg}</b> <small>— {htt_baseline.TOOL_BLURBS[pkg]}</small> — "
+                + _state_markup(installed, "installed", "not installed")
+            )
+            self._tool_buttons[pkg].set_sensitive(not installed)
+
+        config_ok = htt_baseline.snapper_root_configured()
+        self._config_label.set_markup("Snapper root config: " + _state_markup(config_ok, "configured", "not configured"))
+        cleanup_ok = htt_baseline.service_enabled("snapper-cleanup.timer")
+        self._cleanup_label.set_markup("Cleanup timer (prunes snap-pac pairs): "
+                                       + _state_markup(cleanup_ok, "enabled", "disabled"))
+        maint_ok = htt_baseline.service_enabled("btrfsmaintenance-refresh.path")
+        self._maint_label.set_markup("btrfsmaintenance (scrub · balance · trim): "
+                                     + _state_markup(maint_ok, "enabled", "not enabled"))
+        grub_ok = htt_baseline.service_enabled("grub-btrfsd.service")
+        self._grub_label.set_markup("grub-btrfs (boot-menu snapshots): "
+                                    + _state_markup(grub_ok, "enabled", "not enabled"))
+
+        active = htt_baseline.all_packages_installed() and config_ok and cleanup_ok and grub_ok
+        self._summary_label.set_markup(
+            _state_markup(active, "Baseline snapshots are active", "Baseline is not set up yet")
+        )
+        self._disable_btn.set_sensitive(any_installed or config_ok)
+        return False
+
+    def _on_install_tool(self, button, pkg):
+        button.set_sensitive(False)
+        self._set_status(f"Installing {pkg} — follow the terminal…")
+        htt_setups.run_async(
+            htt_baseline.install_tool_command(pkg),
+            lambda result: GLib.idle_add(self._op_finished, f"{pkg} install", result),
+        )
+
+    def _on_enable(self, button):
+        self._set_status("Setting up snapshots — follow the terminal…")
+        htt_setups.run_async(
+            htt_baseline.enable_command(),
+            lambda result: GLib.idle_add(self._op_finished, "Snapshot setup", result),
+        )
+
+    def _confirm_disable(self, button):
+        dlg = Gtk.Window(title="Remove snapshot stack?", transient_for=button.get_root(), modal=True)
+        dlg.set_default_size(480, -1)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(box, f"set_margin_{side}")(18)
+        heading = Gtk.Label(xalign=0)
+        heading.set_markup("<b>Remove snapshot stack?</b>")
+        box.append(heading)
+        box.append(
+            _intro(
+                "This disables the snapshot timers, removes the snapper root config, and removes "
+                "snapper, snap-pac, grub-btrfs, btrfs-assistant and btrfsmaintenance. Your snapshots "
+                "are kept on disk — re-running Enable sets everything up again."
+            )
+        )
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        buttons.set_halign(Gtk.Align.END)
+        cancel = Gtk.Button(label="Cancel")
+        cancel.connect("clicked", lambda _w: dlg.close())
+        go = Gtk.Button(label="Remove")
+        go.add_css_class("destructive-action")
+        go.connect("clicked", self._do_disable, dlg)
+        buttons.append(cancel)
+        buttons.append(go)
+        box.append(buttons)
+        dlg.set_child(box)
+        dlg.present()
+
+    def _do_disable(self, button, dlg):
+        dlg.close()
+        self._set_status("Removing snapshot stack — follow the terminal…")
+        htt_setups.run_async(
+            htt_baseline.disable_command(),
+            lambda result: GLib.idle_add(self._op_finished, "Snapshot teardown", result),
+        )
+
+    def _op_finished(self, what, result):
+        if result.ok:
+            self._set_status(f"{what} finished.")
+        else:
+            self._set_status(f"{what} failed: {result.message or 'see terminal'}", error=True)
+        self._refresh()
+        return False
+
+    # ── non-btrfs root: Timeshift baseline fallback ──────────────────────────
+    def _build_fallback(self, outer):
+        outer.append(
+            _intro(
+                "Your root filesystem is not btrfs, so the snapper + grub-btrfs stack isn't "
+                "available. A default KIROTUX install uses btrfs + GRUB, where your pre-install "
+                "snapshot becomes a bootable entry in the GRUB menu — the recommended layout. "
+                "Here, use Timeshift as your baseline instead."
+            )
+        )
+        ready, guidance = htt_setups.snapshot_ready()
+        if not ready:
+            note = _intro(guidance)
+            note.set_selectable(True)
+            outer.append(note)
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        row.set_halign(Gtk.Align.START)
+        self._fallback_btn = Gtk.Button(label="Take a baseline snapshot")
+        self._fallback_btn.add_css_class("suggested-action")
+        self._fallback_btn.connect("clicked", self._on_fallback_snapshot)
+        row.append(self._fallback_btn)
+        outer.append(row)
+
+    def _on_fallback_snapshot(self, button):
+        ready, guidance = htt_setups.snapshot_ready()
+        if not ready:
+            _snapshot_needed_dialog(
+                button, "A baseline snapshot is your way back if a setup breaks the system.", guidance
+            )
+            return
+        button.set_sensitive(False)
+        self._set_status("Creating a baseline snapshot — follow the terminal…")
+        htt_setups.run_async(
+            htt_setups.snapshot_command("HTT: Start-here baseline"),
+            lambda result: GLib.idle_add(self._fallback_finished, button, result),
+        )
+
+    def _fallback_finished(self, button, result):
+        button.set_sensitive(True)
+        if result.ok:
+            self._set_status("Baseline snapshot created.")
+        else:
+            self._set_status(f"Snapshot failed: {result.message or 'see terminal'}", error=True)
+        return False
+
+
 class BackupTab(_StatusMixin):
     """Take a full-system snapshot on demand."""
 
@@ -506,6 +747,7 @@ def build(window, hyprland_version):
     notebook = Gtk.Notebook()
     notebook.set_scrollable(True)
     notebook.set_vexpand(True)
+    notebook.append_page(StartHereTab().widget, Gtk.Label(label="Start here"))
     notebook.append_page(SetupsTab().widget, Gtk.Label(label="Setups"))
     notebook.append_page(BackupTab().widget, Gtk.Label(label="Backup"))
     root.append(notebook)

@@ -11,6 +11,14 @@ visible terminal — it never bundles or redistributes their files. It is a post
 per-user tool. Its architecture mirrors **fish-tweak-tool**; read that project first when
 extending this one.
 
+HTT is the **free, public base tool** under KIROTUX's open-core model (set 2026-06-28, ADR-011):
+the base tool ships free + open and is funded by donations, while a **premium** per-WM SKU
+(`hyprland-tweak-tool-premium`) is the only potential paid piece — currently **dormant**, not
+built, may never ship. Source for the base tool lives on public GitHub
+(`kirodubes/hyprland-tweak-tool` — this repo's `origin`) and the package publishes to the
+**public `nemesis_repo`**, *not* the private `kirotux-repo`. Deliver changes with
+`~/.bin/flow-htt` (push source → build in chroot → publish to nemesis_repo).
+
 - **Language**: Python 3.8+
 - **GUI Framework**: GTK4 + PyGObject
 - **Entry Point**: `usr/share/hyprland-tweak-tool/hyprland-tweak-tool.py`
@@ -24,19 +32,28 @@ extending this one.
 ```
 usr/share/hyprland-tweak-tool/
 ├── hyprland-tweak-tool.py   # Entry point: Gtk.Application + Main window
-├── htt_gui.py               # GUI: header bar + Notebook (Setups tab; more tabs later)
+├── htt_gui.py               # GUI: header bar + Notebook (Start here · Setups · Backup)
 ├── htt_setups.py            # Setup registry + install/restore engine (toolkit-free, headless-testable)
+├── htt_baseline.py          # "Start here" tab logic: btrfs snapshot stack (toolkit-free)
 ├── htt_config.py            # App preferences (window size, …)
 ├── log.py                   # Logging: log_section / log_info / log_success / ...
-└── htt.css                  # GTK4 stylesheet
+├── htt.css                  # GTK4 stylesheet
+└── scripts/                 # Privileged bash payloads run via `sudo bash` in a visible terminal
+    ├── baseline-snapshots-enable.sh
+    └── baseline-snapshots-disable.sh
 ```
 
-`htt_setups.py` is deliberately GTK-free (like fish-tweak-tool's `ftt_fisher`) so it stays
-unit-testable. Each setup is installed by running that project's **own** upstream installer in a
-visible terminal (`run_visibly`, a bash adaptation of `ftt_fisher.run_visibly`). Mutating calls
-run in a daemon thread and hand back a `Result(ok, message)`. System-rewriting setups (those
-that touch the bootloader, display manager or pacman mirrorlist) are marked high-risk and require
-a Timeshift snapshot first.
+`htt_setups.py` and `htt_baseline.py` are deliberately GTK-free (like fish-tweak-tool's
+`ftt_fisher`) so they stay unit-testable. Each setup is installed by running that project's
+**own** upstream installer in a visible terminal (`run_visibly`, a bash adaptation of
+`ftt_fisher.run_visibly`). Mutating calls run in a daemon thread and hand back a
+`Result(ok, message)`. System-rewriting setups (those that touch the bootloader, display manager
+or pacman mirrorlist) are marked high-risk and require a snapshot first.
+
+`htt_baseline.py` ports ATT's Btrfs page (`btrfs.py` / `btrfs_gui.py`) to KIROTUX: it sets up the
+snapper + grub-btrfs snapshot baseline (the multi-step privileged work lives in `scripts/`, run
+via `sudo bash <path>` so every step is shown in the terminal). On a non-btrfs root the
+"Start here" tab falls back to a Timeshift baseline via the existing `htt_setups` helpers.
 
 Modules are prefixed `htt_` (parallel to fish-tweak-tool's `ftt_`). The entry point keeps the
 hyphenated `hyprland-tweak-tool.py` name because it is executed, never imported.
@@ -48,19 +65,43 @@ hyphenated `hyprland-tweak-tool.py` name because it is executed, never imported.
 | App preferences   | `~/.config/hyprland-tweak-tool/prefs.json`      |
 | Kiro golden config| `/usr/share/kiro/hyprland/` (read-only, restore source) |
 
-## Roadmap (milestones)
+## Current state & direction
 
-- **M0** — Scaffold (done): GTK4 skeleton, launcher, desktop entry.
-- **M1** — Setups hub (done): install the community setups via their own installers (ML4W,
+The milestone (M0–M3) roadmap has been **dropped** — work is now feature-driven, not sequenced.
+
+What exists today:
+
+- **"Start here" tab** (done, first tab): sets up a snapshot baseline to roll back to before
+  experimenting. On btrfs it installs/configures the snapper + grub-btrfs stack (ATT's Btrfs page
+  ported — bootable snapshots from the GRUB menu); on ext4 it falls back to a Timeshift baseline.
+- **Setups hub** (done): installs the community setups via their own installers (ML4W,
   JaKooLit, Omarchy, end-4, HyDE, Caelestia), ordered safest → most hazardous with a hazard
-  marker on the system-rewriting ones; per-setup risk tier, consent dialog, mandatory Timeshift
-  snapshot for high-risk, a Timeshift-ready pre-check, a post-install reboot prompt, and a
+  marker on the system-rewriting ones; per-setup risk tier, consent dialog, mandatory system
+  snapshot for high-risk, a snapshot-ready pre-check, a post-install reboot prompt, and a
   "Restore Kiro Hyprland" reset from the golden copy.
-- **M2** — Config editor (Appearance / Animations / Input). The Kiro Hyprland config is a Lua
+- **Backup tab** (done): on-demand full-system snapshot (snapper on btrfs, Timeshift otherwise).
+
+Possible future work (no committed order):
+
+- **Config editor** (Appearance / Animations / Input). The Kiro Hyprland config is a Lua
   program (`hyprland.lua`). **Do not edit it directly** — a GUI should own a separate declarative
   override file that the Lua *sources*; humans own the base Lua. `hyprctl keyword` does NOT work
   on a Lua config — apply via edit + `hyprctl reload`.
-- **M3** — Backup & recovery tab (manual snapshot, rollback).
+
+## KIROTUX install defaults & snapshot strategy
+
+A KIROTUX Hyprland system installs with **btrfs** (the recommended default in the Calamares
+`partition.conf` — `defaultFileSystemType: btrfs`, with ext4/xfs/f2fs still pickable) and
+**GRUB** (`kiro_bootloader.conf` `efiBootLoader: grub`; BIOS already used GRUB). HTT should
+assume this layout by default.
+
+**Recommend snapper, not Timeshift, on a KIROTUX system.** Timeshift is on board as the
+fallback, but on the default btrfs + GRUB layout snapper (with `grub-btrfs`) gives a
+**bootable pre-install snapshot in the GRUB menu** — so when a community setup *fails to
+install Hyprland* or leaves the system unbootable, the user can roll back straight from GRUB.
+That is the exact failure mode this hub guards against, and the reason snapper is preferred.
+`snapshot_backend()` already picks snapper on a btrfs root and falls back to Timeshift on
+ext4/others; surface snapper as the recommended path when the root is btrfs.
 
 ## Development Patterns
 

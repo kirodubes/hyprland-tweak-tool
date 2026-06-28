@@ -71,6 +71,20 @@
   (`sudo timeshift-gtk` → pick a location → create one snapshot). Same guard runs when
   a low-risk setup's optional snapshot is ticked. Stops a user requesting the safety
   net only to silently get none.
+- **Reframed HTT as a free, public open-core tool** — updated `CLAUDE.md` to record the
+  2026-06-28 direction change: the base tool ships free + open (public GitHub
+  `kirodubes/hyprland-tweak-tool` → public `nemesis_repo`, delivered via `~/.bin/flow-htt`),
+  a per-WM `hyprland-tweak-tool-premium` is the only potential paid piece (dormant). Dropped
+  the M0–M3 milestone roadmap for a feature-driven "Current state & direction", and documented
+  the KIROTUX install defaults (btrfs + GRUB) and why snapper is recommended over Timeshift.
+- **New "Start here" first tab — establish a baseline before experimenting.** HTT installs other
+  people's setups, some of which rewrite GRUB/SDDM/mirrorlist; the safety story needs the user to
+  have a snapshot to roll back to *first*. Ported ATT's Btrfs page to KIROTUX: on a btrfs root the
+  tab installs/configures the **snapper + snap-pac + grub-btrfs + btrfs-assistant +
+  btrfsmaintenance** stack and takes a baseline snapshot — and because KIROTUX uses **GRUB**, the
+  pre-install snapshot becomes a **bootable entry in the GRUB menu** (recovery without a live ISO),
+  flipping ATT's systemd-boot caveat. On a non-btrfs root it falls back to a Timeshift baseline.
+  Tab order is now **Start here · Setups · Backup**.
 
 ### Technical Details
 
@@ -100,12 +114,26 @@
   hosts a `Gtk.Notebook` instead of the coming-soon `_notice`. Install runs off the
   UI thread; the GUI is a thin client of the install command.
 - `htt.css` adds `.setup-card` (+ reuses `.plugin-name` / `.plugin-desc`).
+- **Start here tab:** new toolkit-free `htt_baseline.py` (parallels ATT's `btrfs.py`) — `PACKAGES`
+  incl. `grub-btrfs`, read-only state queries (`pacman -Q`, `systemctl is-enabled`,
+  `/etc/snapper/configs/root`), and command builders returning `sudo …` strings run through the
+  existing `htt_setups.run_async`/`run_visibly`. Privileged work lives in two auditable bash
+  scripts (`scripts/baseline-snapshots-{enable,disable}.sh`, `set -euo pipefail`) invoked via
+  `sudo bash <path>` (path resolved relative to `__file__`, so it works from the repo and when
+  installed). The enable script ports ATT's `/.snapshots` detach→create-config→remount dance
+  (KIROTUX pre-stages `@snapshots` — verified in the Calamares `mount.conf`) and adds grub-btrfs
+  (`grub-btrfsd` + `grub-mkconfig`). `htt_gui.StartHereTab` mirrors `SetupsTab`/`BackupTab` with a
+  `_refresh()` that re-queries state after each op; added public `htt_setups.root_is_btrfs()`.
+  No PKGBUILD change — `package()`'s `cp -a usr` ships `scripts/` automatically.
 
 ### Files Modified
 
 - `usr/share/hyprland-tweak-tool/hyprland-tweak-tool.py` (new)
-- `usr/share/hyprland-tweak-tool/htt_gui.py` (new; reworked into the Setups hub)
-- `usr/share/hyprland-tweak-tool/htt_setups.py` (new — setup registry + install engine)
+- `usr/share/hyprland-tweak-tool/htt_gui.py` (new; reworked into the Setups hub; + `StartHereTab`)
+- `usr/share/hyprland-tweak-tool/htt_setups.py` (new — setup registry + install engine; + `root_is_btrfs`)
+- `usr/share/hyprland-tweak-tool/htt_baseline.py` (new — "Start here" snapshot-baseline logic)
+- `usr/share/hyprland-tweak-tool/scripts/baseline-snapshots-enable.sh` (new)
+- `usr/share/hyprland-tweak-tool/scripts/baseline-snapshots-disable.sh` (new)
 - `usr/share/hyprland-tweak-tool/htt_config.py` (new)
 - `usr/share/hyprland-tweak-tool/log.py` (new)
 - `usr/share/hyprland-tweak-tool/htt.css` (new; `.setup-card`)
