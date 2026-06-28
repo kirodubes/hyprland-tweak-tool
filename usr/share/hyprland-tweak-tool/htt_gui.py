@@ -110,8 +110,70 @@ class SetupsTab(_StatusMixin):
             cards.append(self._card(setup))
         scrolled.set_child(cards)
         outer.append(scrolled)
+
+        if htt_setups.kiro_restore_available():
+            recover = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+            recover.append(
+                _intro("Tried a setup and want Kiro Hyprland back? This removes your hypr/waybar/mako/GTK "
+                       "config and rewrites Kiro's (your current one is backed up first).")
+            )
+            restore = Gtk.Button(label="Restore Kiro Hyprland")
+            restore.set_valign(Gtk.Align.CENTER)
+            restore.set_halign(Gtk.Align.END)
+            restore.set_hexpand(True)
+            restore.connect("clicked", self._confirm_restore)
+            recover.append(restore)
+            outer.append(recover)
+
         outer.append(self._init_status())
         return outer
+
+    def _confirm_restore(self, button):
+        dlg = Gtk.Window(title="Restore Kiro Hyprland?", transient_for=button.get_root(), modal=True)
+        dlg.set_default_size(480, -1)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(box, f"set_margin_{side}")(18)
+        heading = Gtk.Label(xalign=0)
+        heading.set_markup("<b>Restore Kiro Hyprland?</b>")
+        box.append(heading)
+        box.append(
+            _intro(
+                "This removes your current hypr, waybar, mako and GTK config and rewrites Kiro's "
+                "defaults — so leftovers from another setup are cleared. Your current config is moved "
+                "to a backup under ~/.config/hyprland-tweak-tool/before-kiro-restore/ first. Log out "
+                "and back in (or reboot) afterwards to apply."
+            )
+        )
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        buttons.set_halign(Gtk.Align.END)
+        cancel = Gtk.Button(label="Cancel")
+        cancel.connect("clicked", lambda _w: dlg.close())
+        go = Gtk.Button(label="Restore Kiro Hyprland")
+        go.add_css_class("destructive-action")
+        go.connect("clicked", self._do_restore, button, dlg)
+        buttons.append(cancel)
+        buttons.append(go)
+        box.append(buttons)
+        dlg.set_child(box)
+        dlg.present()
+
+    def _do_restore(self, go_button, anchor, dlg):
+        dlg.close()
+        try:
+            backup = htt_setups.restore_kiro_hyprland()
+        except OSError as exc:
+            self._set_status(f"Restore failed: {exc}", error=True)
+            return
+        msg = "Kiro Hyprland config restored."
+        if backup:
+            msg += f" Old config backed up to {backup}."
+        self._set_status(msg)
+        self._show_reboot_dialog(
+            anchor,
+            "Kiro Hyprland restored",
+            "Log out and back in (or reboot) to apply it — your session is still running the old config.",
+        )
 
     def _card(self, setup):
         card = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
@@ -122,9 +184,15 @@ class SetupsTab(_StatusMixin):
         name.add_css_class("plugin-name")
         name.set_hexpand(True)
         title_row.append(name)
+        if htt_setups.needs_snapshot(setup):
+            hazard = Gtk.Label(label="⚠ Can break your system")
+            hazard.add_css_class("hazard-badge")
+            hazard.set_valign(Gtk.Align.CENTER)
+            title_row.append(hazard)
         if setup.is_installed():
             badge = Gtk.Label(label="Installed")
             badge.add_css_class("placeholder-badge")
+            badge.set_valign(Gtk.Align.CENTER)
             title_row.append(badge)
         card.append(title_row)
 
@@ -140,21 +208,27 @@ class SetupsTab(_StatusMixin):
 
         controls = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         controls.set_margin_top(4)
-        variants = Gtk.DropDown.new_from_strings(list(setup.variants.keys()))
-        variants.set_valign(Gtk.Align.CENTER)
-        variants.set_hexpand(True)
-        variants.set_halign(Gtk.Align.START)
+        # Only offer a variant picker when there is a real choice (e.g. ML4W's
+        # Rolling/Stable). A single-variant setup just gets the Install button.
+        variants = None
+        if len(setup.variants) > 1:
+            variants = Gtk.DropDown.new_from_strings(list(setup.variants.keys()))
+            variants.set_valign(Gtk.Align.CENTER)
+            variants.set_hexpand(True)
+            variants.set_halign(Gtk.Align.START)
+            controls.append(variants)
         install = Gtk.Button(label="Install")
         install.add_css_class("suggested-action")
         install.set_halign(Gtk.Align.END)
+        install.set_hexpand(variants is None)
         install.connect("clicked", self._on_install, setup, variants)
-        controls.append(variants)
         controls.append(install)
         card.append(controls)
         return card
 
     def _on_install(self, button, setup, variants):
-        label = list(setup.variants.keys())[variants.get_selected()]
+        keys = list(setup.variants.keys())
+        label = keys[variants.get_selected()] if variants is not None else keys[0]
         self._confirm_install(button, setup, label)
 
     def _confirm_install(self, button, setup, label):
@@ -231,7 +305,12 @@ class SetupsTab(_StatusMixin):
         button.set_sensitive(True)
         if result.ok:
             self._set_status(f"{setup.name} installed — reboot to apply.")
-            self._show_reboot_dialog(button, setup)
+            self._show_reboot_dialog(
+                button,
+                f"{setup.name} is installed",
+                "A reboot is required for the new setup to take effect — it usually only applies after "
+                "rebooting. Save your work first.",
+            )
         else:
             self._set_status(f"{setup.name} install failed: {result.message or 'see terminal'}", error=True)
         return False
@@ -262,21 +341,16 @@ class SetupsTab(_StatusMixin):
         dlg.set_child(box)
         dlg.present()
 
-    def _show_reboot_dialog(self, button, setup):
+    def _show_reboot_dialog(self, button, heading_text, detail):
         dlg = Gtk.Window(title="Reboot to apply", transient_for=button.get_root(), modal=True)
         dlg.set_default_size(440, -1)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         for side in ("start", "end", "top", "bottom"):
             getattr(box, f"set_margin_{side}")(18)
         heading = Gtk.Label(xalign=0)
-        heading.set_markup(f"<b>{GLib.markup_escape_text(setup.name)} is installed</b>")
+        heading.set_markup(f"<b>{GLib.markup_escape_text(heading_text)}</b>")
         box.append(heading)
-        box.append(
-            _intro(
-                "A reboot is required for the new setup to take effect — it usually only applies after "
-                "rebooting. Save your work first."
-            )
-        )
+        box.append(_intro(detail))
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         buttons.set_halign(Gtk.Align.END)
         later = Gtk.Button(label="Later")

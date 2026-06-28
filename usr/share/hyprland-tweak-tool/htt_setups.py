@@ -13,6 +13,7 @@ a system-rewriting installer is a Timeshift snapshot, prefixed onto the install
 command for high-risk setups (see :func:`install_command`).
 """
 
+import datetime
 import json
 import os
 import shutil
@@ -23,6 +24,11 @@ import threading
 import log
 
 CONFIG_HOME = os.path.expanduser("~/.config")
+
+# Pristine golden copy of the Kiro Hyprland config, shipped read-only by the
+# kiro-hyprland package. Present only on a Kiro system; the restore action is
+# hidden otherwise.
+KIRO_HYPR_SOURCE = "/usr/share/kiro/hyprland"
 
 # Timeshift writes its config only once it has been set up. "Configured" = a
 # snapshot location is chosen (backup_device_uuid is non-empty).
@@ -64,6 +70,33 @@ def _snapshot_command(setup):
 def needs_snapshot(setup):
     """True when a setup is risky enough that a Timeshift snapshot is mandatory."""
     return setup.risk == "high"
+
+
+def kiro_restore_available():
+    """True when the kiro-hyprland golden copy is present (i.e. this is a Kiro system)."""
+    return os.path.isdir(KIRO_HYPR_SOURCE) and bool(os.listdir(KIRO_HYPR_SOURCE))
+
+
+def restore_kiro_hyprland():
+    """Remove the user's Hyprland config dirs and rewrite Kiro's pristine copy.
+
+    Each replaced dir is first moved to a timestamped backup (so a foreign waybar,
+    mako, etc. is gone from ~/.config but still recoverable). Returns the backup
+    dir path, or None if nothing needed backing up.
+    """
+    names = sorted(n for n in os.listdir(KIRO_HYPR_SOURCE) if os.path.isdir(os.path.join(KIRO_HYPR_SOURCE, n)))
+    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
+    backup = os.path.join(CONFIG_HOME, "hyprland-tweak-tool", "before-kiro-restore", stamp)
+    backed_up = False
+    for name in names:
+        target = os.path.join(CONFIG_HOME, name)
+        if os.path.exists(target):
+            os.makedirs(backup, exist_ok=True)
+            shutil.move(target, os.path.join(backup, name))
+            backed_up = True
+        shutil.copytree(os.path.join(KIRO_HYPR_SOURCE, name), target)
+    log.log_info(f"Restored Kiro Hyprland config from {KIRO_HYPR_SOURCE}")
+    return backup if backed_up else None
 
 
 def timeshift_ready():
@@ -215,7 +248,11 @@ JAKOOLIT = Setup(
     detect=_jakoolit_installed,
 )
 
-SETUPS = [ML4W, OMARCHY, END4, HYDE, CAELESTIA, JAKOOLIT]
+# Ordered safest → most hazardous. The clean dotfile installs lead (ML4W, JaKooLit);
+# the heavy AUR/build ones follow (end-4, Caelestia); the system-breakers that touch
+# boot-critical state are LAST and carry a hazard marker (HyDE rewrites GRUB/SDDM;
+# Omarchy rewrites the pacman mirrorlist as a fresh-Arch bootstrap).
+SETUPS = [ML4W, JAKOOLIT, END4, CAELESTIA, HYDE, OMARCHY]
 
 
 class Result:

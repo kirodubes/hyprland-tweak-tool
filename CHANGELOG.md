@@ -40,6 +40,18 @@
 - Replaced the misleading config-only "back up ~/.config" mechanism (it couldn't undo
   boot/DM/pacman changes) with the Timeshift snapshot; removed `snapshot_now` /
   `list_backups` / `restore_backup` and the "Restore a backup…" button.
+- **Ordered the card list by reliability** — the setups that install cleanly lead
+  (ML4W, then JaKooLit), with the riskier / less-reliable ones (Omarchy, end-4, HyDE,
+  Caelestia) below.
+- **"Restore Kiro Hyprland" — the config-level way back.** The `kiro-hyprland` package
+  now ships a pristine golden copy of its config at `/usr/share/kiro/hyprland/`; HTT
+  reads it to **remove** the user's hypr/waybar/mako/gtk dirs and **rewrite** Kiro's
+  (each removed dir is moved to a timestamped backup under
+  `~/.config/hyprland-tweak-tool/before-kiro-restore/` first). This clears leftovers a
+  setup leaves behind — e.g. a foreign waybar — which an overlay copy would miss. The
+  button only appears on a Kiro system (where the golden copy exists); a confirm dialog
+  precedes it and a reboot/relogin prompt follows. (`kiro_restore_available`,
+  `restore_kiro_hyprland`.)
 - **Timeshift pre-check** (`htt_setups.timeshift_ready`) — before a required snapshot,
   verify Timeshift is installed *and* configured (a `backup_device_uuid` in
   `/etc/timeshift/timeshift.json`). If not, a high-risk install is **blocked** with a
