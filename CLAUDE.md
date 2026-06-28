@@ -63,7 +63,14 @@ hyphenated `hyprland-tweak-tool.py` name because it is executed, never imported.
 | What              | Path                                            |
 |-------------------|-------------------------------------------------|
 | App preferences   | `~/.config/hyprland-tweak-tool/prefs.json`      |
-| Kiro golden config| `/usr/share/kiro/kiro-hyprland/` (read-only, restore source) |
+| Kiro golden config| `/etc/skel/.config/` (read-only, restore source — the full Kiro config set) |
+| Pre-restore backup| `~/.config/hyprland-tweak-tool/before-kiro-restore/<timestamp>/` |
+
+**Restore Kiro Hyprland** (Backup/Restore tab) and the standalone CLI `kiro-hyprland-restore`
+(`usr/bin/`, for when you're stuck in a TTY) both restore the chosen configs from
+`/etc/skel/.config/` — the complete Kiro set populated by every kiro-* package — backing up the
+user's current versions first. `htt_setups.kiro_restore_items()` enumerates the source, so the
+GUI checklist and the CLI stay in sync with no manifest.
 
 ## Current state & direction
 

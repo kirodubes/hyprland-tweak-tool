@@ -25,10 +25,13 @@ import log
 
 CONFIG_HOME = os.path.expanduser("~/.config")
 
-# Pristine golden copy of the Kiro Hyprland config, shipped read-only by the
-# kiro-hyprland package at a path matching the package name. Present only on a
-# Kiro system; the restore action is hidden otherwise.
-KIRO_HYPR_SOURCE = "/usr/share/kiro/kiro-hyprland"
+# The golden source for "Restore Kiro Hyprland": /etc/skel/.config holds the
+# complete, pristine Kiro config set (hypr, waybar, mako, gtk, rofi, fish,
+# starship.toml, …), populated read-only by every kiro-* package. Present on a
+# Kiro system; the restore action is disabled otherwise. Both the GUI checklist
+# and the kiro-hyprland-restore CLI enumerate this directory, so there is one
+# source of truth with no manifest to drift.
+KIRO_SKEL = "/etc/skel/.config"
 
 # Timeshift writes its config only once it has been set up. "Configured" = a
 # snapshot location is chosen (backup_device_uuid is non-empty).
@@ -102,29 +105,41 @@ def needs_snapshot(setup):
 
 
 def kiro_restore_available():
-    """True when the kiro-hyprland golden copy is present (i.e. this is a Kiro system)."""
-    return os.path.isdir(KIRO_HYPR_SOURCE) and bool(os.listdir(KIRO_HYPR_SOURCE))
+    """True when the Kiro skel config set is present (i.e. this is a Kiro system)."""
+    return os.path.isdir(KIRO_SKEL) and bool(os.listdir(KIRO_SKEL))
 
 
-def restore_kiro_hyprland():
-    """Remove the user's Hyprland config dirs and rewrite Kiro's pristine copy.
+def kiro_restore_items():
+    """Sorted names of the Kiro config entries (dirs and files) restorable from skel."""
+    if not os.path.isdir(KIRO_SKEL):
+        return []
+    return sorted(os.listdir(KIRO_SKEL))
 
-    Each replaced dir is first moved to a timestamped backup (so a foreign waybar,
-    mako, etc. is gone from ~/.config but still recoverable). Returns the backup
-    dir path, or None if nothing needed backing up.
+
+def restore_kiro_hyprland(selected=None):
+    """Rewrite the chosen Kiro config entries from /etc/skel/.config.
+
+    `selected` is a list of names from :func:`kiro_restore_items`; None means all.
+    Each replaced entry (dir or file) is first moved to a timestamped backup, so a
+    foreign waybar, rofi, etc. is gone from ~/.config but still recoverable. Returns
+    the backup dir path, or None if nothing needed backing up.
     """
-    names = sorted(n for n in os.listdir(KIRO_HYPR_SOURCE) if os.path.isdir(os.path.join(KIRO_HYPR_SOURCE, n)))
+    names = kiro_restore_items() if selected is None else [n for n in kiro_restore_items() if n in selected]
     stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
     backup = os.path.join(CONFIG_HOME, "hyprland-tweak-tool", "before-kiro-restore", stamp)
     backed_up = False
     for name in names:
+        source = os.path.join(KIRO_SKEL, name)
         target = os.path.join(CONFIG_HOME, name)
         if os.path.exists(target):
             os.makedirs(backup, exist_ok=True)
             shutil.move(target, os.path.join(backup, name))
             backed_up = True
-        shutil.copytree(os.path.join(KIRO_HYPR_SOURCE, name), target)
-    log.log_info(f"Restored Kiro Hyprland config from {KIRO_HYPR_SOURCE}")
+        if os.path.isdir(source):
+            shutil.copytree(source, target)
+        else:
+            shutil.copy2(source, target)
+    log.log_info(f"Restored Kiro config ({len(names)} items) from {KIRO_SKEL}")
     return backup if backed_up else None
 
 

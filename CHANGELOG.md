@@ -116,6 +116,17 @@
   action now lives with the snapshot/backup actions rather than at the bottom of the Setups list.
   Lifted the shared reboot-prompt dialog (`_show_reboot_dialog`/`_do_reboot`) into `_StatusMixin`
   so both tabs reuse it.
+- **Restore reworked: golden source = `/etc/skel/.config`, a checklist, and a TTY command.**
+  Evidence from a real KIROTUX box (picard) showed `/etc/skel/.config` already holds the complete,
+  pristine Kiro config set (hypr, waybar, mako, gtk, rofi, fish, starship.toml, …) populated by
+  every kiro-* package — far more complete than the single-package `/usr/share/kiro/kiro-hyprland`
+  copy. So the restore now reads from there: `KIRO_SKEL`, `kiro_restore_items()` (enumerates the
+  source, dirs **and** files), and `restore_kiro_hyprland(selected)` (copytree for dirs, copy2 for
+  files like `starship.toml`). The GUI restore is now a **checklist** — every config ticked by
+  default, untick to keep yours. New standalone **`kiro-hyprland-restore`** CLI
+  (`usr/bin/`) does the same from a plain console, so a user **locked out in a TTY** can recover
+  (`--list`, `-y`, or named subsets). Both paths enumerate the same source, so they never drift.
+  (fastfetch becomes restorable once `kiro-hyprland` ships it in skel — done in that repo.)
 
 ### Technical Details
 

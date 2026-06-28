@@ -634,8 +634,9 @@ class BackupTab(_StatusMixin):
         outer.append(Gtk.Separator(orientation=Gtk.Orientation.HORIZONTAL))
         outer.append(_section("Restore Kiro Hyprland"))
         outer.append(
-            _intro("Tried a setup and want Kiro Hyprland back? This removes your hypr/waybar/mako/GTK "
-                   "config and rewrites Kiro's (your current one is backed up first).")
+            _intro("Tried a setup and want Kiro Hyprland back? Pick which configs to restore from "
+                   "Kiro's defaults — your current ones are backed up first. (Stuck in a TTY? Run "
+                   "kiro-hyprland-restore from the console.)")
         )
         rrow = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         rrow.set_halign(Gtk.Align.START)
@@ -643,12 +644,12 @@ class BackupTab(_StatusMixin):
         if htt_setups.kiro_restore_available():
             restore.connect("clicked", self._confirm_restore)
         else:
-            # Always shown so it's discoverable; disabled with a reason when the
-            # kiro-hyprland golden copy isn't installed (i.e. not a KIROTUX system).
+            # Always shown so it's discoverable; disabled with a reason when the Kiro skel
+            # config set isn't present (i.e. not a KIROTUX system).
             restore.set_sensitive(False)
             restore.set_tooltip_text(
-                "Available on a KIROTUX install — restores from the kiro-hyprland package's golden "
-                "copy at /usr/share/kiro/kiro-hyprland, which isn't present on this system."
+                "Available on a KIROTUX install — restores from Kiro's defaults in "
+                "/etc/skel/.config, which isn't present on this system."
             )
         rrow.append(restore)
         outer.append(rrow)
@@ -658,7 +659,7 @@ class BackupTab(_StatusMixin):
 
     def _confirm_restore(self, button):
         dlg = Gtk.Window(title="Restore Kiro Hyprland?", transient_for=button.get_root(), modal=True)
-        dlg.set_default_size(480, -1)
+        dlg.set_default_size(480, 560)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         for side in ("start", "end", "top", "bottom"):
             getattr(box, f"set_margin_{side}")(18)
@@ -667,17 +668,32 @@ class BackupTab(_StatusMixin):
         box.append(heading)
         box.append(
             _intro(
-                "This removes your current hypr, waybar, mako and GTK config and rewrites Kiro's "
-                "defaults — so leftovers from another setup are cleared. Your current config is moved "
-                "to a backup under ~/.config/hyprland-tweak-tool/before-kiro-restore/ first. Log out "
-                "and back in (or reboot) afterwards to apply."
+                "Tick what to restore from Kiro's defaults (all on by default — untick to keep yours). "
+                "Each chosen config is moved to a backup under "
+                "~/.config/hyprland-tweak-tool/before-kiro-restore/ first, then Kiro's is written. "
+                "Log out and back in (or reboot) afterwards to apply."
             )
         )
+
+        # One checkbox per restorable config entry from /etc/skel/.config, all ticked.
+        scrolled = Gtk.ScrolledWindow()
+        scrolled.set_vexpand(True)
+        scrolled.set_policy(Gtk.PolicyType.NEVER, Gtk.PolicyType.AUTOMATIC)
+        items = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=4)
+        self._restore_checks = {}
+        for name in htt_setups.kiro_restore_items():
+            check = Gtk.CheckButton(label=name)
+            check.set_active(True)
+            self._restore_checks[name] = check
+            items.append(check)
+        scrolled.set_child(items)
+        box.append(scrolled)
+
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         buttons.set_halign(Gtk.Align.END)
         cancel = Gtk.Button(label="Cancel")
         cancel.connect("clicked", lambda _w: dlg.close())
-        go = Gtk.Button(label="Restore Kiro Hyprland")
+        go = Gtk.Button(label="Restore selected")
         go.add_css_class("destructive-action")
         go.connect("clicked", self._do_restore, button, dlg)
         buttons.append(cancel)
@@ -687,9 +703,13 @@ class BackupTab(_StatusMixin):
         dlg.present()
 
     def _do_restore(self, go_button, anchor, dlg):
+        selected = [name for name, check in self._restore_checks.items() if check.get_active()]
         dlg.close()
+        if not selected:
+            self._set_status("Nothing selected — restore cancelled.")
+            return
         try:
-            backup = htt_setups.restore_kiro_hyprland()
+            backup = htt_setups.restore_kiro_hyprland(selected)
         except OSError as exc:
             self._set_status(f"Restore failed: {exc}", error=True)
             return

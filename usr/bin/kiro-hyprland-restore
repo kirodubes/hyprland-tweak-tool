@@ -1,0 +1,132 @@
+#!/bin/bash
+set -euo pipefail
+#####################################################################
+# Author  : Erik Dubois
+# Website : https://kiroproject.be
+# DO NOT JUST RUN THIS. EXAMINE AND JUDGE. RUN AT YOUR OWN RISK.
+#
+# Purpose:
+#   Restore the Kiro Hyprland desktop configuration from the pristine
+#   defaults in /etc/skel/.config back into ~/.config, after a community
+#   setup overwrote it. Each replaced config is moved to a timestamped
+#   backup first. Works from a plain TTY — no GUI needed.
+# Why:
+#   Hyprland Tweak Tool's graphical "Restore Kiro Hyprland" is useless if
+#   you are locked out in a console; this is the same restore as a
+#   standalone command, so you can recover even when Hyprland won't start.
+#####################################################################
+
+GOLDEN="/etc/skel/.config"
+DEST="${HOME}/.config"
+BACKUP_ROOT="${HOME}/.config/hyprland-tweak-tool/before-kiro-restore"
+
+# ── TTY-safe colors ──────────────────────────────────────────────
+if [ -t 1 ] && command -v tput >/dev/null 2>&1; then
+    RED="$(tput setaf 1)"; GREEN="$(tput setaf 2)"; YELLOW="$(tput setaf 3)"
+    BLUE="$(tput setaf 4)"; RESET="$(tput sgr0)"
+else
+    RED=""; GREEN=""; YELLOW=""; BLUE=""; RESET=""
+fi
+log_info()    { echo "${BLUE}$*${RESET}"; }
+log_warn()    { echo "${YELLOW}$*${RESET}"; }
+log_error()   { echo "${RED}$*${RESET}" >&2; }
+log_success() { echo "${GREEN}$*${RESET}"; }
+
+usage() {
+    cat <<EOF
+kiro-hyprland-restore — restore Kiro Hyprland configs from ${GOLDEN}
+
+Usage:
+  kiro-hyprland-restore [--list] [-y|--yes] [NAME ...]
+
+  (no args)      restore the full Kiro config set (asks to confirm)
+  NAME ...       restore only the named configs (e.g. hypr waybar mako)
+  --list         list the restorable configs and exit
+  -y, --yes      skip the confirmation prompt
+  -h, --help     show this help
+
+Each replaced config is moved to ${BACKUP_ROOT}/<timestamp>/ first.
+EOF
+}
+
+available_items() {
+    [ -d "$GOLDEN" ] || return 0
+    ( cd "$GOLDEN" && ls -1A ) | sort
+}
+
+main() {
+    local assume_yes=0 list_only=0
+    local -a names=()
+    for arg in "$@"; do
+        case "$arg" in
+            -h|--help) usage; exit 0 ;;
+            --list) list_only=1 ;;
+            -y|--yes) assume_yes=1 ;;
+            -*) log_error "Unknown option: $arg"; usage; exit 2 ;;
+            *) names+=("$arg") ;;
+        esac
+    done
+
+    if [ ! -d "$GOLDEN" ] || [ -z "$(available_items)" ]; then
+        log_error "No Kiro config defaults found in ${GOLDEN}."
+        log_error "This does not look like a KIROTUX system — nothing to restore."
+        exit 1
+    fi
+
+    mapfile -t all_items < <(available_items)
+
+    if [ "$list_only" -eq 1 ]; then
+        log_info "Restorable Kiro configs (${GOLDEN}):"
+        printf '  %s\n' "${all_items[@]}"
+        exit 0
+    fi
+
+    # Resolve which items to restore: named subset (validated) or all.
+    local -a items=()
+    if [ "${#names[@]}" -gt 0 ]; then
+        for n in "${names[@]}"; do
+            if printf '%s\n' "${all_items[@]}" | grep -qxF "$n"; then
+                items+=("$n")
+            else
+                log_error "Not a Kiro config: $n  (try --list)"
+                exit 2
+            fi
+        done
+    else
+        items=("${all_items[@]}")
+    fi
+
+    log_warn "About to restore these configs from Kiro's defaults into ${DEST}:"
+    printf '  %s\n' "${items[@]}"
+    log_warn "Your current versions are backed up first; this overwrites them."
+    if [ "$assume_yes" -ne 1 ]; then
+        read -r -p "Proceed? [y/N] " reply
+        case "$reply" in
+            y|Y|yes|YES) ;;
+            *) log_info "Cancelled."; exit 0 ;;
+        esac
+    fi
+
+    local stamp backup backed_up=0
+    stamp="$(date +%Y%m%d-%H%M%S)"
+    backup="${BACKUP_ROOT}/${stamp}"
+
+    for item in "${items[@]}"; do
+        local src="${GOLDEN}/${item}" dst="${DEST}/${item}"
+        if [ -e "$dst" ] || [ -L "$dst" ]; then
+            mkdir -p "$backup"
+            mv "$dst" "${backup}/"
+            backed_up=1
+        fi
+        mkdir -p "$DEST"
+        cp -a "$src" "$dst"
+        log_success "restored ${item}"
+    done
+
+    if [ "$backed_up" -eq 1 ]; then
+        log_info "Your previous configs were backed up to: ${backup}"
+    fi
+    log_success "Done. Start Hyprland again (or log out and back in) to apply."
+}
+
+main "$@"
