@@ -60,15 +60,9 @@ else
 fi
 
 echo ''
-echo '━━━ 5/6  Enabling grub-btrfs (boot a snapshot from the GRUB menu) ━━━'
-# grub-btrfsd watches /.snapshots and regenerates the GRUB "snapshots" submenu.
-systemctl enable --now grub-btrfsd.service
-# Generate the submenu now so a pre-install snapshot is bootable immediately.
-grub-mkconfig -o /boot/grub/grub.cfg
-echo 'grub-btrfsd enabled; GRUB snapshots submenu generated'
-
-echo ''
-echo '━━━ 6/6  Baseline snapshot ━━━'
+echo '━━━ 5/6  Baseline snapshot ━━━'
+# Create the baseline BEFORE generating the GRUB menu so it is guaranteed to appear
+# in the first grub.cfg (grub-mkconfig only enumerates snapshots that exist now).
 if snapper -c root list | grep -q 'Start-here baseline'; then
     echo 'Start-here baseline snapshot already exists — skipping'
 else
@@ -77,7 +71,18 @@ fi
 snapper -c root list
 
 echo ''
-echo 'snap-pac now creates a pre/post snapshot pair on every pacman action.'
-echo 'If an experiment leaves you unable to boot, pick the snapshot from the GRUB'
-echo 'menu (Arch Linux snapshots) and roll back — no live ISO needed. Btrfs'
-echo 'Assistant also does rollback from a running system.'
+echo '━━━ 6/6  Enabling grub-btrfs (boot a snapshot from the GRUB menu) ━━━'
+# grub-btrfsd watches /.snapshots and regenerates the GRUB "snapshots" submenu on
+# every later snapshot change (each snap-pac pre/post pair) — no manual step needed.
+systemctl enable --now grub-btrfsd.service
+# Generate the submenu now (the baseline above is included) so it is bootable
+# from the GRUB menu at the next reboot.
+grub-mkconfig -o /boot/grub/grub.cfg
+echo 'grub-btrfsd enabled; GRUB snapshots submenu generated (visible at next reboot)'
+
+echo ''
+echo 'snap-pac now creates a pre/post snapshot pair on every pacman action, and'
+echo 'grub-btrfsd refreshes the menu automatically. The GRUB "Arch Linux snapshots"'
+echo 'submenu appears at the NEXT reboot. If an experiment leaves you unable to boot,'
+echo 'pick a snapshot there to boot it read-only and roll back — no live ISO needed.'
+echo 'Btrfs Assistant also does rollback from a running system.'
