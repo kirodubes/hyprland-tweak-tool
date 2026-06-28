@@ -26,9 +26,9 @@ import log
 CONFIG_HOME = os.path.expanduser("~/.config")
 
 # Pristine golden copy of the Kiro Hyprland config, shipped read-only by the
-# kiro-hyprland package. Present only on a Kiro system; the restore action is
-# hidden otherwise.
-KIRO_HYPR_SOURCE = "/usr/share/kiro/hyprland"
+# kiro-hyprland package at a path matching the package name. Present only on a
+# Kiro system; the restore action is hidden otherwise.
+KIRO_HYPR_SOURCE = "/usr/share/kiro/kiro-hyprland"
 
 # Timeshift writes its config only once it has been set up. "Configured" = a
 # snapshot location is chosen (backup_device_uuid is non-empty).

@@ -56,7 +56,7 @@
   gives backend-specific setup guidance; all user-facing wording is now neutral
   ("system snapshot" rather than naming a tool).
 - **"Restore Kiro Hyprland" — the config-level way back.** The `kiro-hyprland` package
-  now ships a pristine golden copy of its config at `/usr/share/kiro/hyprland/`; HTT
+  ships a pristine golden copy of its config at `/usr/share/kiro/kiro-hyprland/`; HTT
   reads it to **remove** the user's hypr/waybar/mako/gtk dirs and **rewrite** Kiro's
   (each removed dir is moved to a timestamped backup under
   `~/.config/hyprland-tweak-tool/before-kiro-restore/` first). This clears leftovers a
@@ -94,6 +94,11 @@
   → take a point-in-time snapshot before a high-risk install (unchanged); **none** → gate a
   high-risk install with a dialog pointing at the Start here tab. A one-line coverage banner sits
   above the setup cards.
+- **Fixed the Restore golden-copy path.** `kiro-hyprland` was repackaged to install its pristine
+  config at `/usr/share/kiro/kiro-hyprland/` (matching the package name), but HTT still read the
+  old `/usr/share/kiro/hyprland/`. On a real KIROTUX system that made `kiro_restore_available()`
+  return `False` — the "Restore Kiro Hyprland" button never appeared and a restore would have
+  failed. Pointed `KIRO_HYPR_SOURCE` at the new path.
 
 ### Technical Details
 
@@ -129,7 +134,10 @@
   existing `htt_setups.run_async`/`run_visibly`. Privileged work lives in two auditable bash
   scripts (`scripts/baseline-snapshots-{enable,disable}.sh`, `set -euo pipefail`) invoked via
   `sudo bash <path>` (path resolved relative to `__file__`, so it works from the repo and when
-  installed). The enable script ports ATT's `/.snapshots` detach→create-config→remount dance
+  installed). `protection_state()` returns `snapper` (btrfs + `/etc/snapper/configs/root`),
+  `timeshift` (non-btrfs + configured), or `none`; `SetupsTab._confirm_install`/`_start_install`
+  branch on it (the `state` is threaded into `_start_install` so snapper never forces a snapshot).
+  The enable script ports ATT's `/.snapshots` detach→create-config→remount dance
   (KIROTUX pre-stages `@snapshots` — verified in the Calamares `mount.conf`) and adds grub-btrfs
   (`grub-btrfsd` + `grub-mkconfig`). `htt_gui.StartHereTab` mirrors `SetupsTab`/`BackupTab` with a
   `_refresh()` that re-queries state after each op; added public `htt_setups.root_is_btrfs()`.

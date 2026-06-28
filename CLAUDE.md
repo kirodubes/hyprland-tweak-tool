@@ -63,7 +63,7 @@ hyphenated `hyprland-tweak-tool.py` name because it is executed, never imported.
 | What              | Path                                            |
 |-------------------|-------------------------------------------------|
 | App preferences   | `~/.config/hyprland-tweak-tool/prefs.json`      |
-| Kiro golden config| `/usr/share/kiro/hyprland/` (read-only, restore source) |
+| Kiro golden config| `/usr/share/kiro/kiro-hyprland/` (read-only, restore source) |
 
 ## Current state & direction
 
