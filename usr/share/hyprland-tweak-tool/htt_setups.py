@@ -6,12 +6,13 @@ redistributes their files. This module is the engine; it is deliberately
 toolkit-free (no GTK import) so it stays headless-testable, and every mutating
 call runs off the UI thread and hands back a :class:`Result` rather than raising.
 
-Modelled on ``fish-tweak-tool``'s ``ftt_fisher`` (the visible-terminal runner +
-snapshot/restore helpers), adapted from fish to bash because the installer
-commands use bash process substitution (``bash <(curl …)``).
+Modelled on ``fish-tweak-tool``'s ``ftt_fisher`` (the visible-terminal runner),
+adapted from fish to bash because the installer commands use bash process
+substitution (``bash <(curl …)``). The way back to a bootable Kiro Hyprland after
+a system-rewriting installer is a Timeshift snapshot, prefixed onto the install
+command for high-risk setups (see :func:`install_command`).
 """
 
-import datetime
 import os
 import shutil
 import subprocess
@@ -20,12 +21,7 @@ import threading
 
 import log
 
-# Hyprland config dirs snapshotted before an install, so a setup that reshapes
-# ~/.config is reversible from HTT (belt-and-suspenders alongside the setup's
-# own backup logic, e.g. ML4W's restore[] manifest).
 CONFIG_HOME = os.path.expanduser("~/.config")
-SNAPSHOT_DIRS = ("hypr", "waybar", "mako", "gtk-3.0", "gtk-4.0")
-BACKUP_DIR = os.path.expanduser("~/.config/hyprland-tweak-tool/backups")
 
 # Terminals (preferred first) used to run installers *visibly*, so the user
 # always sees the exact command changing their system — no black box. Both take
@@ -36,17 +32,41 @@ _TERMINALS = ("alacritty", "xterm")
 class Setup:
     """A community Hyprland setup installable via its own upstream installer."""
 
-    def __init__(self, id, name, tagline, homepage, variants, detect):
+    def __init__(self, id, name, tagline, homepage, variants, detect, risk="low", changes=None):
         self.id = id
         self.name = name
         self.tagline = tagline
         self.homepage = homepage
         self.variants = variants  # ordered dict: label -> install command
         self._detect = detect
+        # risk "high" = the installer touches boot-critical state (bootloader,
+        # display manager, pacman mirrorlist) — a Timeshift snapshot is then forced.
+        self.risk = risk
+        self.changes = changes  # human text: what a high-risk installer overwrites
 
     def is_installed(self):
         """Best-effort heuristic — drives an 'Installed' badge, never blocks install."""
         return self._detect()
+
+
+# A pre-install system snapshot is the only dependable way back to a bootable
+# Kiro Hyprland after a system-rewriting installer. Kiro ships Timeshift; the
+# snapshot runs in the visible terminal so the user authenticates sudo there.
+def _snapshot_command(setup):
+    return f"sudo timeshift --create --comments 'HTT: before {setup.id}' --scripted"
+
+
+def needs_snapshot(setup):
+    """True when a setup is risky enough that a Timeshift snapshot is mandatory."""
+    return setup.risk == "high"
+
+
+def install_command(setup, label, snapshot):
+    """The full command for a variant, optionally prefixed with a Timeshift snapshot."""
+    cmd = setup.variants[label]
+    if snapshot:
+        return f"{_snapshot_command(setup)} && {cmd}"
+    return cmd
 
 
 def _ml4w_installed():
@@ -104,6 +124,9 @@ OMARCHY = Setup(
         "Install": "wget -qO- https://omarchy.org/install | bash",
     },
     detect=_omarchy_installed,
+    risk="high",
+    changes="rewrites your pacman mirrorlist to Omarchy's mirror and installs a whole desktop. "
+    "It is built for a fresh/minimal Arch — on a configured Kiro system it can break pacman and boot.",
 )
 
 END4 = Setup(
@@ -130,6 +153,9 @@ HYDE = Setup(
         "&& cd ~/HyDE/Scripts && ./install.sh",
     },
     detect=_hyde_installed,
+    risk="high",
+    changes="overwrites your GRUB (bootloader) and SDDM (login) configs, plus GTK/Qt theming. "
+    "A broken SDDM or GRUB config can leave you without a graphical login or unable to boot.",
 )
 
 CAELESTIA = Setup(
@@ -163,61 +189,25 @@ SETUPS = [ML4W, OMARCHY, END4, HYDE, CAELESTIA, JAKOOLIT]
 class Result:
     """Outcome of an install operation."""
 
-    def __init__(self, ok, message="", backup=None):
+    def __init__(self, ok, message=""):
         self.ok = ok
         self.message = message
-        self.backup = backup
-
-
-# ── Backup / restore ─────────────────────────────────────────────────────────
-
-
-def snapshot_now():
-    """Back up the existing Hyprland config dirs into a timestamped folder; return its path."""
-    present = [d for d in SNAPSHOT_DIRS if os.path.isdir(os.path.join(CONFIG_HOME, d))]
-    if not present:
-        return None
-    stamp = datetime.datetime.now().strftime("%Y%m%d-%H%M%S")
-    dest = os.path.join(BACKUP_DIR, f"hypr-{stamp}")
-    os.makedirs(dest, exist_ok=True)
-    for name in present:
-        shutil.copytree(os.path.join(CONFIG_HOME, name), os.path.join(dest, name), dirs_exist_ok=True)
-    log.log_info(f"Backed up Hyprland config to {dest}")
-    return dest
-
-
-def list_backups():
-    """Return existing backup directories, newest first."""
-    if not os.path.isdir(BACKUP_DIR):
-        return []
-    paths = [os.path.join(BACKUP_DIR, name) for name in os.listdir(BACKUP_DIR)]
-    return sorted((p for p in paths if os.path.isdir(p)), reverse=True)
-
-
-def restore_backup(path):
-    """Copy each saved config dir from a backup back over ~/.config."""
-    for name in os.listdir(path):
-        src = os.path.join(path, name)
-        if os.path.isdir(src):
-            shutil.copytree(src, os.path.join(CONFIG_HOME, name), dirs_exist_ok=True)
-    log.log_info(f"Restored Hyprland config from {path}")
 
 
 # ── Install orchestration ────────────────────────────────────────────────────
 
 
-def run_async(command, on_done, snapshot=False):
+def run_async(command, on_done):
     """Run an installer off the UI thread; call on_done(Result).
 
-    Snapshots the Hyprland config first when ``snapshot`` is set, then runs the
-    command in a visible terminal so the user sees exactly what is changing their
-    system — never a black box.
+    The command runs in a visible terminal so the user sees exactly what is
+    changing their system — never a black box. When a Timeshift snapshot is
+    required it is already prefixed onto the command by :func:`install_command`.
     """
 
     def worker():
-        backup = snapshot_now() if snapshot else None
         ok, message = run_visibly(command)
-        on_done(Result(ok, message, backup))
+        on_done(Result(ok, message))
 
     threading.Thread(target=worker, daemon=True).start()
 

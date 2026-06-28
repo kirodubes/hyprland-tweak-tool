@@ -26,6 +26,20 @@
   GTK/Qt/SDDM/GRUB on existing Arch), Caelestia (AUR via paru + `caelestia install`),
   JaKooLit (Arch-Hyprland installer; flags the March 2026 archival/fork). Six setups
   total; the Setups tab is a scrollable card list.
+- **Bootability safety — the real concern with a hub of other people's installers.**
+  Per-setup `risk` tier (`high` for Omarchy + HyDE, which rewrite the pacman mirrorlist
+  / GRUB / SDDM — the things that brick a boot). Install now goes through a **consent
+  dialog** naming what the installer changes; high-risk setups require a **Timeshift
+  snapshot first** (`sudo timeshift --create … --scripted &&` prefixed onto the command
+  in the visible terminal — that's the dependable way back to a bootable Kiro Hyprland,
+  and bash `&&` means a failed snapshot aborts the install). Low-risk setups get a
+  warning + an optional snapshot checkbox.
+- **Post-install "Reboot now" popup** — a setup only takes effect after a reboot (ML4W
+  confirmed this), so a successful install raises a dialog offering **Reboot now**
+  (`systemctl reboot`) or Later.
+- Replaced the misleading config-only "back up ~/.config" mechanism (it couldn't undo
+  boot/DM/pacman changes) with the Timeshift snapshot; removed `snapshot_now` /
+  `list_backups` / `restore_backup` and the "Restore a backup…" button.
 
 ### Technical Details
 

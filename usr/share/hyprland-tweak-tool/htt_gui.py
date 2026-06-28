@@ -6,7 +6,7 @@ tab — Setups — installs a setup via its own upstream installer. Later config
 tabs (Appearance, Animations, …) slot into the same Notebook.
 """
 
-import os
+import subprocess
 
 import gi
 
@@ -110,11 +110,6 @@ class SetupsTab(_StatusMixin):
             cards.append(self._card(setup))
         scrolled.set_child(cards)
         outer.append(scrolled)
-
-        restore = Gtk.Button(label="Restore a backup…")
-        restore.set_halign(Gtk.Align.START)
-        restore.connect("clicked", self._on_restore)
-        outer.append(restore)
         outer.append(self._init_status())
         return outer
 
@@ -147,78 +142,123 @@ class SetupsTab(_StatusMixin):
         controls.set_margin_top(4)
         variants = Gtk.DropDown.new_from_strings(list(setup.variants.keys()))
         variants.set_valign(Gtk.Align.CENTER)
-        backup = Gtk.CheckButton(label="Back up my Hyprland config first")
-        backup.set_active(True)
-        backup.set_valign(Gtk.Align.CENTER)
+        variants.set_hexpand(True)
+        variants.set_halign(Gtk.Align.START)
         install = Gtk.Button(label="Install")
         install.add_css_class("suggested-action")
         install.set_halign(Gtk.Align.END)
-        install.set_hexpand(True)
-        install.connect("clicked", self._on_install, setup, variants, backup)
+        install.connect("clicked", self._on_install, setup, variants)
         controls.append(variants)
-        controls.append(backup)
         controls.append(install)
         card.append(controls)
         return card
 
-    def _on_install(self, button, setup, variants, backup):
+    def _on_install(self, button, setup, variants):
         label = list(setup.variants.keys())[variants.get_selected()]
-        command = setup.variants[label]
-        button.set_sensitive(False)
-        self._set_status(f"Installing {setup.name} — follow the terminal…")
+        self._confirm_install(button, setup, label)
 
-        def on_done(result):
-            GLib.idle_add(self._install_finished, setup, button, result)
-
-        htt_setups.run_async(command, on_done, snapshot=backup.get_active())
-
-    def _install_finished(self, setup, button, result):
-        button.set_sensitive(True)
-        if result.ok:
-            msg = f"{setup.name} installed."
-            if result.backup:
-                msg += f" Backup: {result.backup}"
-            self._set_status(msg)
-        else:
-            self._set_status(f"{setup.name} install failed: {result.message or 'see terminal'}", error=True)
-        return False
-
-    def _on_restore(self, button):
-        backups = htt_setups.list_backups()
-        if not backups:
-            self._set_status("No backups yet — they are made before an install.")
-            return
-        dlg = Gtk.Window(title="Restore a backup", transient_for=button.get_root(), modal=True)
-        dlg.set_default_size(420, -1)
+    def _confirm_install(self, button, setup, label):
+        high = htt_setups.needs_snapshot(setup)
+        dlg = Gtk.Window(title=f"Install {setup.name}?", transient_for=button.get_root(), modal=True)
+        dlg.set_default_size(480, -1)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
         for side in ("start", "end", "top", "bottom"):
-            getattr(box, f"set_margin_{side}")(16)
-        box.append(
-            _intro("Restoring copies the saved config back over ~/.config (hypr, waybar, mako, gtk). Pick a snapshot:")
-        )
-        chooser = Gtk.DropDown.new_from_strings([os.path.basename(p) for p in backups])
-        box.append(chooser)
+            getattr(box, f"set_margin_{side}")(18)
+
+        heading = Gtk.Label(xalign=0)
+        heading.set_markup(f"<b>Install {GLib.markup_escape_text(setup.name)}?</b>")
+        box.append(heading)
+        box.append(_intro(setup.tagline))
+
+        if high:
+            warn = Gtk.Label(xalign=0)
+            warn.add_css_class("status-error")
+            warn.set_wrap(True)
+            warn.set_markup(
+                f"<b>This installer {GLib.markup_escape_text(setup.changes)}</b>\n"
+                "It can leave your system unbootable. A Timeshift snapshot will be taken first — "
+                "restore it to get back to Kiro Hyprland."
+            )
+            box.append(warn)
+            snapshot_check = None
+        else:
+            box.append(
+                _intro(
+                    "This runs the installer on your current system and changes your desktop config. "
+                    "A reboot is needed afterwards to apply it."
+                )
+            )
+            snapshot_check = Gtk.CheckButton(label="Take a Timeshift snapshot first (recommended)")
+            box.append(snapshot_check)
+
         buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
         buttons.set_halign(Gtk.Align.END)
         cancel = Gtk.Button(label="Cancel")
         cancel.connect("clicked", lambda _w: dlg.close())
-        confirm = Gtk.Button(label="Restore")
-        confirm.add_css_class("destructive-action")
-        confirm.connect("clicked", self._do_restore, backups, chooser, dlg)
+        go = Gtk.Button(label="Install")
+        go.add_css_class("destructive-action" if high else "suggested-action")
+        go.connect("clicked", self._start_install, button, setup, label, snapshot_check, dlg)
         buttons.append(cancel)
-        buttons.append(confirm)
+        buttons.append(go)
         box.append(buttons)
         dlg.set_child(box)
         dlg.present()
 
-    def _do_restore(self, button, backups, chooser, dlg):
-        path = backups[chooser.get_selected()]
+    def _start_install(self, go_button, install_button, setup, label, snapshot_check, dlg):
+        snapshot = htt_setups.needs_snapshot(setup) or (snapshot_check is not None and snapshot_check.get_active())
+        dlg.close()
+        install_button.set_sensitive(False)
+        self._set_status(f"Installing {setup.name} — follow the terminal…")
+        command = htt_setups.install_command(setup, label, snapshot)
+
+        def on_done(result):
+            GLib.idle_add(self._install_finished, setup, install_button, result)
+
+        htt_setups.run_async(command, on_done)
+
+    def _install_finished(self, setup, button, result):
+        button.set_sensitive(True)
+        if result.ok:
+            self._set_status(f"{setup.name} installed — reboot to apply.")
+            self._show_reboot_dialog(button, setup)
+        else:
+            self._set_status(f"{setup.name} install failed: {result.message or 'see terminal'}", error=True)
+        return False
+
+    def _show_reboot_dialog(self, button, setup):
+        dlg = Gtk.Window(title="Reboot to apply", transient_for=button.get_root(), modal=True)
+        dlg.set_default_size(440, -1)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(box, f"set_margin_{side}")(18)
+        heading = Gtk.Label(xalign=0)
+        heading.set_markup(f"<b>{GLib.markup_escape_text(setup.name)} is installed</b>")
+        box.append(heading)
+        box.append(
+            _intro(
+                "A reboot is required for the new setup to take effect — it usually only applies after "
+                "rebooting. Save your work first."
+            )
+        )
+        buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        buttons.set_halign(Gtk.Align.END)
+        later = Gtk.Button(label="Later")
+        later.connect("clicked", lambda _w: dlg.close())
+        reboot = Gtk.Button(label="Reboot now")
+        reboot.add_css_class("destructive-action")
+        reboot.connect("clicked", self._do_reboot, dlg)
+        buttons.append(later)
+        buttons.append(reboot)
+        box.append(buttons)
+        dlg.set_child(box)
+        dlg.present()
+
+    def _do_reboot(self, button, dlg):
         dlg.close()
         try:
-            htt_setups.restore_backup(path)
-            self._set_status(f"Restored from {os.path.basename(path)}.")
+            subprocess.Popen(["systemctl", "reboot"])
         except OSError as exc:
-            self._set_status(f"Restore failed: {exc}", error=True)
+            self._set_status(f"Could not reboot: {exc} — reboot manually.", error=True)
 
 
 def _show_support_dialog(window):
