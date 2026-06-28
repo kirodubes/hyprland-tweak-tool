@@ -40,6 +40,13 @@
 - Replaced the misleading config-only "back up ~/.config" mechanism (it couldn't undo
   boot/DM/pacman changes) with the Timeshift snapshot; removed `snapshot_now` /
   `list_backups` / `restore_backup` and the "Restore a backup…" button.
+- **Timeshift pre-check** (`htt_setups.timeshift_ready`) — before a required snapshot,
+  verify Timeshift is installed *and* configured (a `backup_device_uuid` in
+  `/etc/timeshift/timeshift.json`). If not, a high-risk install is **blocked** with a
+  "Set up Timeshift first" dialog that tells the user exactly what to do
+  (`sudo timeshift-gtk` → pick a location → create one snapshot). Same guard runs when
+  a low-risk setup's optional snapshot is ticked. Stops a user requesting the safety
+  net only to silently get none.
 
 ### Technical Details
 

@@ -13,6 +13,7 @@ a system-rewriting installer is a Timeshift snapshot, prefixed onto the install
 command for high-risk setups (see :func:`install_command`).
 """
 
+import json
 import os
 import shutil
 import subprocess
@@ -22,6 +23,10 @@ import threading
 import log
 
 CONFIG_HOME = os.path.expanduser("~/.config")
+
+# Timeshift writes its config only once it has been set up. "Configured" = a
+# snapshot location is chosen (backup_device_uuid is non-empty).
+TIMESHIFT_CONFIGS = ("/etc/timeshift/timeshift.json", "/etc/timeshift.json")
 
 # Terminals (preferred first) used to run installers *visibly*, so the user
 # always sees the exact command changing their system — no black box. Both take
@@ -59,6 +64,33 @@ def _snapshot_command(setup):
 def needs_snapshot(setup):
     """True when a setup is risky enough that a Timeshift snapshot is mandatory."""
     return setup.risk == "high"
+
+
+def timeshift_ready():
+    """Return (ready, guidance). ready=False blocks a required snapshot; guidance tells the user why."""
+    if shutil.which("timeshift") is None:
+        return False, (
+            "Timeshift is not installed — it is your way back if an install breaks the system. "
+            "Install it first:  sudo pacman -S timeshift"
+        )
+    path = next((p for p in TIMESHIFT_CONFIGS if os.path.exists(p)), None)
+    if path is None:
+        return False, (
+            "Timeshift is installed but not set up yet. Open Timeshift (run: sudo timeshift-gtk), choose "
+            "a snapshot type and location, and create one snapshot — then try the install again."
+        )
+    try:
+        with open(path, encoding="utf-8") as f:
+            configured = bool(json.load(f).get("backup_device_uuid"))
+    except (OSError, ValueError):
+        # Config exists but unreadable — Timeshift has been set up at least once; don't block.
+        return True, ""
+    if not configured:
+        return False, (
+            "Timeshift has no snapshot location set. Open Timeshift (run: sudo timeshift-gtk), pick a "
+            "device/location, and create one snapshot — then try the install again."
+        )
+    return True, ""
 
 
 def install_command(setup, label, snapshot):

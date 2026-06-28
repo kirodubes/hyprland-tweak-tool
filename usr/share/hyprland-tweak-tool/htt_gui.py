@@ -159,6 +159,11 @@ class SetupsTab(_StatusMixin):
 
     def _confirm_install(self, button, setup, label):
         high = htt_setups.needs_snapshot(setup)
+        if high:
+            ready, guidance = htt_setups.timeshift_ready()
+            if not ready:
+                self._show_timeshift_needed(button, setup, guidance)
+                return
         dlg = Gtk.Window(title=f"Install {setup.name}?", transient_for=button.get_root(), modal=True)
         dlg.set_default_size(480, -1)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -206,6 +211,12 @@ class SetupsTab(_StatusMixin):
 
     def _start_install(self, go_button, install_button, setup, label, snapshot_check, dlg):
         snapshot = htt_setups.needs_snapshot(setup) or (snapshot_check is not None and snapshot_check.get_active())
+        if snapshot:
+            ready, guidance = htt_setups.timeshift_ready()
+            if not ready:
+                dlg.close()
+                self._show_timeshift_needed(install_button, setup, guidance)
+                return
         dlg.close()
         install_button.set_sensitive(False)
         self._set_status(f"Installing {setup.name} — follow the terminal…")
@@ -224,6 +235,32 @@ class SetupsTab(_StatusMixin):
         else:
             self._set_status(f"{setup.name} install failed: {result.message or 'see terminal'}", error=True)
         return False
+
+    def _show_timeshift_needed(self, button, setup, guidance):
+        dlg = Gtk.Window(title="Set up Timeshift first", transient_for=button.get_root(), modal=True)
+        dlg.set_default_size(480, -1)
+        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(box, f"set_margin_{side}")(18)
+        heading = Gtk.Label(xalign=0)
+        heading.set_markup("<b>Set up Timeshift first</b>")
+        box.append(heading)
+        box.append(
+            _intro(
+                f"Installing {setup.name} can change boot-critical parts of your system. A Timeshift "
+                "snapshot is your only reliable way back to Kiro Hyprland, so the install is blocked "
+                "until Timeshift is ready."
+            )
+        )
+        detail = _intro(guidance)
+        detail.set_selectable(True)
+        box.append(detail)
+        close = Gtk.Button(label="Close")
+        close.set_halign(Gtk.Align.END)
+        close.connect("clicked", lambda _w: dlg.close())
+        box.append(close)
+        dlg.set_child(box)
+        dlg.present()
 
     def _show_reboot_dialog(self, button, setup):
         dlg = Gtk.Window(title="Reboot to apply", transient_for=button.get_root(), modal=True)
