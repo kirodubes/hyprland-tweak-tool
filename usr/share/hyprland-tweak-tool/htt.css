@@ -1,0 +1,68 @@
+label#title {
+    font-size: 20px;
+    font-weight: 600;
+}
+
+label.info-label {
+    color: alpha(currentColor, 0.65);
+    font-size: 11px;
+}
+
+.support-button {
+    color: #e0567a;
+}
+
+.support-button:hover {
+    background-color: alpha(#e0567a, 0.18);
+}
+
+.placeholder-title {
+    font-size: 22px;
+    font-weight: 600;
+}
+
+.placeholder-detail {
+    color: alpha(currentColor, 0.65);
+    font-size: 13px;
+}
+
+.placeholder-badge {
+    color: alpha(currentColor, 0.5);
+    font-size: 11px;
+    font-style: italic;
+}
+
+.section-title {
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 4px;
+}
+
+.status-line {
+    color: #ffa500;  /* ATT orange */
+    font-size: 14px;
+    font-weight: 600;
+    min-height: 20px;
+    margin-top: 4px;
+}
+
+.status-error {
+    color: @error_color;
+}
+
+.plugin-name {
+    font-size: 14px;
+    font-weight: 600;
+}
+
+.plugin-desc {
+    color: alpha(currentColor, 0.65);
+    font-size: 12px;
+}
+
+.setup-card {
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid alpha(currentColor, 0.12);
+    background-color: alpha(currentColor, 0.04);
+}

@@ -1,0 +1,60 @@
+# Changelog
+
+## 2026.06.28
+
+### What Changed
+
+- **M0 scaffold created** — stood up Hyprland Tweak Tool as a GTK4 Python app
+  whose architecture mirrors fish-tweak-tool. The app launches to a header bar
+  (title · Hyprland version · Support · Quit) over a centered "Coming soon"
+  notice. Removed the empty `coming-soon` placeholder file.
+- **Reframed as a setup hub + ML4W as the first installable setup** — replaced the
+  coming-soon body with a Notebook whose first tab, **Setups**, installs a community
+  Hyprland setup by running its **own** upstream installer in a visible terminal
+  (HTT bundles nothing). The ML4W card offers a Rolling (Hyprland 0.55.x, default)
+  / Stable variant, an opt-in "back up my Hyprland config first" snapshot, and a
+  "Restore a backup…" affordance. Rolling leads because it targets 0.55.x — Kiro
+  Hyprland's version. This gives HTT a shippable purpose before the (harder, Lua-
+  override-layer) config editor is built.
+
+### Technical Details
+
+- Entry point `hyprland-tweak-tool.py`: `Gtk.Application`
+  (`com.kiro.hyprland-tweak-tool`) + `Main` window. Carries the same UTF-8-mode
+  re-exec guard and locale fallback as fish-tweak-tool. `_hyprland_version()`
+  parses `hyprctl version`, falling back to `Hyprland --version`, then
+  `"unknown"`.
+- Per-domain modules use the `htt_` prefix (parallel to `ftt_`): `htt_gui.py`
+  builds the window and support dialog; `htt_config.py` stores app prefs under
+  `~/.config/hyprland-tweak-tool/prefs.json` (read-modify-write so future tabs
+  never clobber each other); `log.py` is the shared colored logger.
+- `htt.css` carries the title / info-label / support-button / placeholder /
+  status-line classes; the feature-specific classes will return with their tabs.
+- Bash launcher `usr/bin/hyprland-tweak-tool` checks for `python3` and
+  `Hyprland`; `.desktop` entry under `usr/share/applications/`.
+- Added `.gitignore` and `.flake8` (max-line-length 120).
+- New `htt_setups.py` (toolkit-free engine, modelled on `ftt_fisher.py`): a `Setup`
+  data model + `SETUPS` registry (ML4W only, list-shaped for more), `run_async` →
+  `run_visibly` (a **bash** adaptation of the fish runner, because the installer
+  uses `bash <(curl …)` process substitution; Alacritty `-e bash <script>`, echoes
+  the command first), `Result(ok, message, backup)`, and snapshot/list/restore
+  helpers over `~/.config/{hypr,waybar,mako,gtk-3.0,gtk-4.0}` →
+  `~/.config/hyprland-tweak-tool/backups`. `is_installed` is a best-effort badge.
+- `htt_gui.py` gains a `_StatusMixin` (ATT-orange auto-clearing status line, UI
+  marshalled via `GLib.idle_add`) and a `SetupsTab` of setup cards; `build()` now
+  hosts a `Gtk.Notebook` instead of the coming-soon `_notice`. Install runs off the
+  UI thread; the GUI is a thin client of the CLI command (ADR-001).
+- `htt.css` adds `.setup-card` (+ reuses `.plugin-name` / `.plugin-desc`).
+
+### Files Modified
+
+- `usr/share/hyprland-tweak-tool/hyprland-tweak-tool.py` (new)
+- `usr/share/hyprland-tweak-tool/htt_gui.py` (new; reworked into the Setups hub)
+- `usr/share/hyprland-tweak-tool/htt_setups.py` (new — setup registry + install engine)
+- `usr/share/hyprland-tweak-tool/htt_config.py` (new)
+- `usr/share/hyprland-tweak-tool/log.py` (new)
+- `usr/share/hyprland-tweak-tool/htt.css` (new; `.setup-card`)
+- `usr/bin/hyprland-tweak-tool` (new)
+- `usr/share/applications/hyprland-tweak-tool.desktop` (new)
+- `usr/share/hyprland-tweak-tool/coming-soon` (removed)
+- `README.md`, `CHANGELOG.md`, `CLAUDE.md`, `.gitignore`, `.flake8` (new)
