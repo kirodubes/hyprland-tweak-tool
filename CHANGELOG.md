@@ -16,6 +16,10 @@
   "Restore a backup…" affordance. Rolling leads because it targets 0.55.x — Kiro
   Hyprland's version. This gives HTT a shippable purpose before the (harder, Lua-
   override-layer) config editor is built.
+- **Added Omarchy as the second setup** — one `SETUPS` registry entry
+  (`wget -qO- https://omarchy.org/install | bash`). Its tagline flags honestly that
+  Omarchy is a full-desktop *bootstrap* (rewrites the pacman mirrorlist, installs a
+  whole desktop), meant for a fresh/minimal Arch — more invasive than ML4W's dotfiles.
 
 ### Technical Details
 
