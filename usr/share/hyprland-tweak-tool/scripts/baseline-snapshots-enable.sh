@@ -6,14 +6,17 @@ set -euo pipefail
 # so every step is shown (no black box). Idempotent — safe to re-run.
 #
 # KIROTUX installs btrfs + GRUB and pre-stages the Garuda-style @snapshots
-# subvolume at /.snapshots (Calamares mount.conf). Policy: snap-pac + cleanup,
-# NO hourly timeline. grub-btrfs adds a bootable snapshot entry to the GRUB menu.
+# subvolume at /.snapshots (Calamares mount.conf). We configure snapper for BOTH
+# the root (@) and home (@home) subvolumes: grub-btrfs can only boot the root
+# snapshot, and /home is a separate subvolume, so a system rollback never reverts
+# ~/.config — the home config gives you a way back to YOUR desktop config too.
+# Policy: snap-pac + cleanup, NO hourly timeline.
 
-echo '━━━ 1/6  Installing snapshot tools ━━━'
+echo '━━━ 1/7  Installing snapshot tools ━━━'
 pacman -S --noconfirm --needed snapper snap-pac grub-btrfs btrfs-assistant btrfsmaintenance
 
 echo ''
-echo '━━━ 2/6  Creating snapper root config ━━━'
+echo '━━━ 2/7  Creating snapper root config ━━━'
 # snapper create-config insists on creating /.snapshots itself and aborts because
 # KIROTUX pre-stages it. Detach our subvolume, let snapper build the config, delete
 # snapper's subvolume, then remount ours as the snapshot store.
@@ -38,12 +41,37 @@ else
 fi
 
 echo ''
-echo '━━━ 3/6  Applying Kiro policy (no hourly timeline) ━━━'
-snapper -c root set-config TIMELINE_CREATE=no
-echo 'TIMELINE_CREATE=no  — snapshots happen on pacman actions via snap-pac'
+echo '━━━ 3/7  Creating snapper home config ━━━'
+# /home is the @home subvolume. snapper creates /home/.snapshots itself (KIROTUX
+# does not pre-stage it), so no detach dance is needed here. This captures your
+# personal config so a setup that splats ~/.config can be undone to YOUR config.
+if [ -f /etc/snapper/configs/home ]; then
+    echo 'home config already exists — skipping create-config'
+else
+    snapper -c home create-config /home
+    echo 'snapper home config created (/home/.snapshots)'
+fi
+# snap-pac snapshots every snapper config by default; keep it OFF for home — pacman
+# writes to / not /home, so a home pre/post pair on every package action is just noise.
+# The home config is for the on-demand baseline only.
+if [ ! -f /etc/snap-pac.ini ]; then
+    printf '[home]\nsnapshot = False\n' > /etc/snap-pac.ini
+    echo 'snap-pac: created /etc/snap-pac.ini excluding home from pacman snapshots'
+elif ! grep -q '^\[home\]' /etc/snap-pac.ini; then
+    printf '\n[home]\nsnapshot = False\n' >> /etc/snap-pac.ini
+    echo 'snap-pac: home excluded from pacman snapshots'
+else
+    echo 'snap-pac: home already configured'
+fi
 
 echo ''
-echo '━━━ 4/6  Enabling snapshot timers ━━━'
+echo '━━━ 4/7  Applying Kiro policy (no hourly timeline) ━━━'
+snapper -c root set-config TIMELINE_CREATE=no
+snapper -c home set-config TIMELINE_CREATE=no
+echo 'TIMELINE_CREATE=no on root + home — snapshots happen on pacman actions / on demand'
+
+echo ''
+echo '━━━ 5/7  Enabling snapshot timers ━━━'
 systemctl enable --now snapper-cleanup.timer
 # create-config silently enables snapper-timeline.timer; Kiro policy is no hourly
 # timeline (TIMELINE_CREATE=no already blocks the snapshots), so disable the timer.
@@ -60,29 +88,37 @@ else
 fi
 
 echo ''
-echo '━━━ 5/6  Baseline snapshot ━━━'
-# Create the baseline BEFORE generating the GRUB menu so it is guaranteed to appear
-# in the first grub.cfg (grub-mkconfig only enumerates snapshots that exist now).
+echo '━━━ 6/7  Baseline snapshots (root + home) ━━━'
+# Create BEFORE generating the GRUB menu so the root baseline is in the first grub.cfg
+# (grub-mkconfig only enumerates snapshots that exist now).
 if snapper -c root list | grep -q 'Start-here baseline'; then
-    echo 'Start-here baseline snapshot already exists — skipping'
+    echo 'root Start-here baseline already exists — skipping'
 else
     snapper -c root create --description 'Start-here baseline'
 fi
+if snapper -c home list | grep -q 'Start-here baseline'; then
+    echo 'home Start-here baseline already exists — skipping'
+else
+    snapper -c home create --description 'Start-here baseline'
+fi
 snapper -c root list
+snapper -c home list
 
 echo ''
-echo '━━━ 6/6  Enabling grub-btrfs (boot a snapshot from the GRUB menu) ━━━'
+echo '━━━ 7/7  Enabling grub-btrfs (boot a snapshot from the GRUB menu) ━━━'
 # grub-btrfsd watches /.snapshots and regenerates the GRUB "snapshots" submenu on
 # every later snapshot change (each snap-pac pre/post pair) — no manual step needed.
 systemctl enable --now grub-btrfsd.service
-# Generate the submenu now (the baseline above is included) so it is bootable
+# Generate the submenu now (the root baseline above is included) so it is bootable
 # from the GRUB menu at the next reboot.
 grub-mkconfig -o /boot/grub/grub.cfg
 echo 'grub-btrfsd enabled; GRUB snapshots submenu generated (visible at next reboot)'
 
 echo ''
-echo 'snap-pac now creates a pre/post snapshot pair on every pacman action, and'
-echo 'grub-btrfsd refreshes the menu automatically. The GRUB "Arch Linux snapshots"'
-echo 'submenu appears at the NEXT reboot. If an experiment leaves you unable to boot,'
-echo 'pick a snapshot there to boot it read-only and roll back — no live ISO needed.'
-echo 'Btrfs Assistant also does rollback from a running system.'
+echo 'Recovery is TWO parts, because a system snapshot never touches /home:'
+echo '  1. SYSTEM  — pick a snapshot from the GRUB "Arch Linux snapshots" submenu to'
+echo '     boot it read-only and roll back the root filesystem (no live ISO needed).'
+echo '  2. YOUR CONFIG (~/.config) — restore the home baseline with Btrfs Assistant or'
+echo '     `snapper -c home`, OR use Hyprland Tweak Tool > Restore Kiro Hyprland'
+echo '     (rewrites hypr/waybar/mako/gtk to Kiro defaults).'
+echo 'snap-pac keeps taking a pre/post root snapshot on every pacman action.'

@@ -20,14 +20,16 @@ for unit in snapper-cleanup.timer snapper-timeline.timer grub-btrfsd.service \
 done
 
 echo ''
-echo '━━━ 2/3  Removing snapper root config ━━━'
-if [ -f /etc/snapper/configs/root ]; then
-    rm -f /etc/snapper/configs/root
-    echo 'removed /etc/snapper/configs/root'
-else
-    echo 'no snapper root config present'
-fi
-echo 'Snapshots already taken are KEPT in the @snapshots subvolume (not deleted).'
+echo '━━━ 2/3  Removing snapper root + home configs ━━━'
+for cfg in root home; do
+    if [ -f "/etc/snapper/configs/${cfg}" ]; then
+        rm -f "/etc/snapper/configs/${cfg}"
+        echo "removed /etc/snapper/configs/${cfg}"
+    else
+        echo "no snapper ${cfg} config present"
+    fi
+done
+echo 'Snapshots already taken are KEPT (root in @snapshots, home in /home/.snapshots).'
 echo 'Use Btrfs Assistant if you ever want to view or remove them.'
 
 echo ''

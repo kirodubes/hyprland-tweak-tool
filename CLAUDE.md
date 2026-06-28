@@ -103,6 +103,15 @@ That is the exact failure mode this hub guards against, and the reason snapper i
 `snapshot_backend()` already picks snapper on a btrfs root and falls back to Timeshift on
 ext4/others; surface snapper as the recommended path when the root is btrfs.
 
+**Recovery is two parts — grub-btrfs can only boot the root snapshot.** The KIROTUX layout puts
+`/home` on a separate `@home` subvolume, so a system (root `@`) rollback never reverts `~/.config`.
+A single GRUB-menu pick therefore cannot restore both; the home side is always a second action. So
+the Start-here baseline configures snapper for **both `root` and `home`** (`snapper -c home`), and
+the recovery story is: **(1) system** — boot the root snapshot from the GRUB "Arch Linux snapshots"
+submenu; **(2) config** — restore the home baseline (Btrfs Assistant / `snapper -c home`) or use
+**Restore Kiro Hyprland** (surgical golden-copy revert of hypr/waybar/mako/gtk). Don't document the
+GRUB rollback as a complete way back on its own.
+
 ## Development Patterns
 
 ### Logging

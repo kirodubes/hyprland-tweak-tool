@@ -278,8 +278,8 @@ class SetupsTab(_StatusMixin):
         state = htt_setups.protection_state()
         if state == "snapper":
             lbl.set_markup(_state_markup(
-                True, "Protected: snapper + grub-btrfs are active — roll back any install from "
-                "the GRUB menu.", ""))
+                True, "Protected: snapper + grub-btrfs are active — system rollback from the GRUB "
+                "menu, desktop config via Restore Kiro Hyprland.", ""))
         elif state == "timeshift":
             lbl.set_markup("Timeshift is your fallback — a snapshot is taken before a "
                            "system-rewriting install.")
@@ -328,8 +328,9 @@ class SetupsTab(_StatusMixin):
             prot = Gtk.Label(xalign=0)
             prot.set_wrap(True)
             prot.set_markup(_state_markup(
-                True, "Protected: snapper + grub-btrfs are active. If this breaks your system, roll "
-                "back from the GRUB menu (Arch Linux snapshots) — no snapshot needed here.", ""))
+                True, "Protected: snapper + grub-btrfs are active. Roll back the system from the GRUB "
+                "menu (Arch Linux snapshots); revert your desktop config with Restore Kiro Hyprland. "
+                "No snapshot needed here.", ""))
             box.append(prot)
         elif high:
             # state == "timeshift": warn, and a Timeshift snapshot is taken first.
@@ -477,11 +478,12 @@ class StartHereTab(_StatusMixin):
         box.append(_section("Status"))
         self._summary_label = _status_label()
         self._config_label = _status_label()
+        self._home_label = _status_label()
         self._cleanup_label = _status_label()
         self._maint_label = _status_label()
         self._grub_label = _status_label()
-        for lbl in (self._summary_label, self._config_label, self._cleanup_label,
-                    self._maint_label, self._grub_label):
+        for lbl in (self._summary_label, self._config_label, self._home_label,
+                    self._cleanup_label, self._maint_label, self._grub_label):
             box.append(lbl)
 
         box.append(_section("Setup"))
@@ -498,10 +500,11 @@ class StartHereTab(_StatusMixin):
         box.append(actions)
 
         caveat = _intro(
-            "KIROTUX uses GRUB with grub-btrfs, so your pre-install snapshot appears as a bootable "
-            "entry in the GRUB menu (Arch Linux snapshots). If an experiment leaves you unable to "
-            "boot, pick it at boot and roll back — no live ISO needed. Btrfs Assistant also does "
-            "rollback from a running system."
+            "Recovery is two parts, because a system snapshot never touches /home:\n"
+            "•  System — your pre-install root snapshot is a bootable entry in the GRUB menu "
+            "(Arch Linux snapshots); pick it to roll back, no live ISO needed.\n"
+            "•  Your config (~/.config) — restore the home baseline with Btrfs Assistant / "
+            "snapper -c home, or use “Restore Kiro Hyprland” on the Setups tab."
         )
         box.append(caveat)
 
@@ -534,7 +537,11 @@ class StartHereTab(_StatusMixin):
             self._tool_buttons[pkg].set_sensitive(not installed)
 
         config_ok = htt_baseline.snapper_root_configured()
-        self._config_label.set_markup("Snapper root config: " + _state_markup(config_ok, "configured", "not configured"))
+        self._config_label.set_markup("Snapper root config (@, system): "
+                                      + _state_markup(config_ok, "configured", "not configured"))
+        home_ok = htt_baseline.snapper_home_configured()
+        self._home_label.set_markup("Snapper home config (@home, ~/.config): "
+                                    + _state_markup(home_ok, "configured", "not configured"))
         cleanup_ok = htt_baseline.service_enabled("snapper-cleanup.timer")
         self._cleanup_label.set_markup("Cleanup timer (prunes snap-pac pairs): "
                                        + _state_markup(cleanup_ok, "enabled", "disabled"))
@@ -545,11 +552,11 @@ class StartHereTab(_StatusMixin):
         self._grub_label.set_markup("grub-btrfs (boot-menu snapshots): "
                                     + _state_markup(grub_ok, "enabled", "not enabled"))
 
-        active = htt_baseline.all_packages_installed() and config_ok and cleanup_ok and grub_ok
+        active = htt_baseline.all_packages_installed() and config_ok and home_ok and cleanup_ok and grub_ok
         self._summary_label.set_markup(
             _state_markup(active, "Baseline snapshots are active", "Baseline is not set up yet")
         )
-        self._disable_btn.set_sensitive(any_installed or config_ok)
+        self._disable_btn.set_sensitive(any_installed or config_ok or home_ok)
         return False
 
     def _on_install_tool(self, button, pkg):

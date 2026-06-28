@@ -85,6 +85,14 @@
   pre-install snapshot becomes a **bootable entry in the GRUB menu** (recovery without a live ISO),
   flipping ATT's systemd-boot caveat. On a non-btrfs root it falls back to a Timeshift baseline.
   Tab order is now **Start here · Setups · Backup**.
+- **Baseline now covers `@home` too — fixing "ML4W half-broken after a GRUB rollback".** grub-btrfs
+  can only boot the **root** snapshot, and `/home` (`@home`) is a separate subvolume, so a system
+  rollback never reverts `~/.config` — a setup that splats your config survived the rollback. The
+  enable script now also creates a snapper **`home`** config and takes a home baseline, so your own
+  pre-experiment config is recoverable. Recovery is documented as **two parts**: system (GRUB
+  snapshot) + config (restore the home baseline via Btrfs Assistant / `snapper -c home`, or
+  "Restore Kiro Hyprland"). The Start-here status panel and the Setups "Protected" wording were
+  updated to say so. (One GRUB pick still can't pair root + home — that's inherent to the layout.)
 - **Setups warnings are now rollback-aware — stop nagging once a baseline exists.** With the
   Start-here snapper baseline, a btrfs system has *continuous* protection (snap-pac on every
   pacman action + bootable grub-btrfs rollback), so forcing an extra snapshot before each install

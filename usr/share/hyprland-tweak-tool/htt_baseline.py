@@ -21,6 +21,10 @@ import subprocess
 import htt_setups
 
 SNAPPER_CONFIG = "/etc/snapper/configs/root"
+# The home (@home) config: grub-btrfs only boots the root snapshot, and /home is a
+# separate subvolume, so a system rollback never reverts ~/.config. The home config
+# captures the user's own desktop config as a separate way back.
+SNAPPER_HOME_CONFIG = "/etc/snapper/configs/home"
 
 # grub-btrfs is the KIROTUX addition vs ATT (GRUB, not systemd-boot): it generates a
 # "snapshots" submenu in GRUB so a pre-install snapshot can be booted read-only.
@@ -56,6 +60,11 @@ def service_enabled(unit):
 def snapper_root_configured():
     """True when the snapper 'root' config already exists."""
     return os.path.isfile(SNAPPER_CONFIG)
+
+
+def snapper_home_configured():
+    """True when the snapper 'home' config already exists."""
+    return os.path.isfile(SNAPPER_HOME_CONFIG)
 
 
 def all_packages_installed():
