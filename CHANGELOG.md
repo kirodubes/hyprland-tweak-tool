@@ -112,6 +112,10 @@
   Now it's always rendered; when the golden copy isn't present it's **disabled with a tooltip**
   explaining it needs a KIROTUX install (the `kiro-hyprland` package at
   `/usr/share/kiro/kiro-hyprland`).
+- **Moved "Restore Kiro Hyprland" to the Backup tab, renamed it "Backup/Restore".** The restore
+  action now lives with the snapshot/backup actions rather than at the bottom of the Setups list.
+  Lifted the shared reboot-prompt dialog (`_show_reboot_dialog`/`_do_reboot`) into `_StatusMixin`
+  so both tabs reuse it.
 
 ### Technical Details
 
