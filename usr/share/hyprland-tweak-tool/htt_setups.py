@@ -53,6 +53,10 @@ def _ml4w_installed():
     return os.path.isdir(os.path.join(CONFIG_HOME, "ml4w")) or shutil.which("ml4w-hyprland-setup") is not None
 
 
+def _omarchy_installed():
+    return os.path.isdir(os.path.expanduser("~/.local/share/omarchy")) or shutil.which("omarchy-menu") is not None
+
+
 # The registry. One entry today; list-shaped so adding Omarchy / end-4 / … later
 # is a single literal with no code change. ML4W rolling targets Hyprland 0.55.x —
 # exactly Kiro Hyprland's version — so it leads as the default variant.
@@ -69,7 +73,22 @@ ML4W = Setup(
     detect=_ml4w_installed,
 )
 
-SETUPS = [ML4W]
+# Omarchy is a full-desktop *bootstrap* by DHH/Basecamp, not dotfiles: it rewrites
+# the pacman mirrorlist and installs a whole curated desktop. It expects a fresh /
+# minimal Arch — far more invasive than ML4W — so the tagline says so plainly.
+OMARCHY = Setup(
+    id="omarchy",
+    name="Omarchy",
+    tagline="A full curated Hyprland desktop (DHH / Basecamp). A bootstrap, not dotfiles — it "
+    "rewrites your pacman mirrorlist and installs a whole desktop; meant for a fresh/minimal Arch.",
+    homepage="https://omarchy.org",
+    variants={
+        "Install": "wget -qO- https://omarchy.org/install | bash",
+    },
+    detect=_omarchy_installed,
+)
+
+SETUPS = [ML4W, OMARCHY]
 
 
 class Result:
