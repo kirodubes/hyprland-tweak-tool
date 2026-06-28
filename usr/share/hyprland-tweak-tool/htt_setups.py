@@ -57,6 +57,24 @@ def _omarchy_installed():
     return os.path.isdir(os.path.expanduser("~/.local/share/omarchy")) or shutil.which("omarchy-menu") is not None
 
 
+def _end4_installed():
+    return os.path.isdir(os.path.expanduser("~/.config/illogical-impulse")) or os.path.isdir(
+        os.path.expanduser("~/.config/quickshell/ii")
+    )
+
+
+def _hyde_installed():
+    return os.path.isdir(os.path.expanduser("~/.config/hyde")) or shutil.which("hyde-shell") is not None
+
+
+def _caelestia_installed():
+    return shutil.which("caelestia") is not None or os.path.isdir(os.path.expanduser("~/.config/caelestia"))
+
+
+def _jakoolit_installed():
+    return os.path.isdir(os.path.expanduser("~/.config/hypr/UserConfigs"))
+
+
 # The registry. One entry today; list-shaped so adding Omarchy / end-4 / … later
 # is a single literal with no code change. ML4W rolling targets Hyprland 0.55.x —
 # exactly Kiro Hyprland's version — so it leads as the default variant.
@@ -88,7 +106,58 @@ OMARCHY = Setup(
     detect=_omarchy_installed,
 )
 
-SETUPS = [ML4W, OMARCHY]
+END4 = Setup(
+    id="end4",
+    name="end-4 — illogical-impulse",
+    tagline="The most-starred Hyprland desktop (end-4). A Quickshell (Qt6/QML) shell with a Super+I "
+    "settings GUI. Heavy: builds quickshell-git and ~13 packages; Arch is the canonical target.",
+    homepage="https://github.com/end-4/dots-hyprland",
+    variants={
+        "Install": "git clone https://github.com/end-4/dots-hyprland.git ~/dots-hyprland "
+        "&& cd ~/dots-hyprland && ./setup",
+    },
+    detect=_end4_installed,
+)
+
+HYDE = Setup(
+    id="hyde",
+    name="HyDE",
+    tagline="A broad, org-maintained Hyprland rice (HyDE Project). Installs onto existing Arch and "
+    "overwrites GTK/Qt/SDDM/GRUB configs — back up first. Arch-only.",
+    homepage="https://github.com/HyDE-Project/HyDE",
+    variants={
+        "Install": "git clone --depth 1 https://github.com/HyDE-Project/HyDE ~/HyDE "
+        "&& cd ~/HyDE/Scripts && ./install.sh",
+    },
+    detect=_hyde_installed,
+)
+
+CAELESTIA = Setup(
+    id="caelestia",
+    name="Caelestia",
+    tagline="A Material-You Quickshell desktop (Caelestia). Installed from the AUR via paru, then "
+    "`caelestia install`. Arch + AUR only; compiled C++ shell, Hyprland-coupled.",
+    homepage="https://github.com/caelestia-dots/caelestia",
+    variants={
+        "Install": "paru -S caelestia-cli && caelestia install",
+    },
+    detect=_caelestia_installed,
+)
+
+JAKOOLIT = Setup(
+    id="jakoolit",
+    name="JaKooLit — Hyprland-Dots",
+    tagline="The most-starred general Hyprland dotfiles (JaKooLit). Clones the Arch-Hyprland "
+    "installer, which backs up ~/.config first. Note: archived March 2026, continued as a fork.",
+    homepage="https://github.com/JaKooLit/Hyprland-Dots",
+    variants={
+        "Install": "git clone --depth=1 https://github.com/JaKooLit/Arch-Hyprland.git ~/Arch-Hyprland "
+        "&& cd ~/Arch-Hyprland && chmod +x install.sh && ./install.sh",
+    },
+    detect=_jakoolit_installed,
+)
+
+SETUPS = [ML4W, OMARCHY, END4, HYDE, CAELESTIA, JAKOOLIT]
 
 
 class Result:

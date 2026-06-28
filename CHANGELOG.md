@@ -20,6 +20,12 @@
   (`wget -qO- https://omarchy.org/install | bash`). Its tagline flags honestly that
   Omarchy is a full-desktop *bootstrap* (rewrites the pacman mirrorlist, installs a
   whole desktop), meant for a fresh/minimal Arch — more invasive than ML4W's dotfiles.
+- **Filled the setup roster — added end-4, HyDE, Caelestia, JaKooLit** — four more
+  registry entries, each invoking the project's own upstream installer with an honest
+  tagline: end-4 (Quickshell, builds quickshell-git + ~13 pkgs), HyDE (overwrites
+  GTK/Qt/SDDM/GRUB on existing Arch), Caelestia (AUR via paru + `caelestia install`),
+  JaKooLit (Arch-Hyprland installer; flags the March 2026 archival/fork). Six setups
+  total; the Setups tab is a scrollable card list.
 
 ### Technical Details
 
