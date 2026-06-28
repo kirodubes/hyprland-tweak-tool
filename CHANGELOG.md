@@ -85,6 +85,15 @@
   pre-install snapshot becomes a **bootable entry in the GRUB menu** (recovery without a live ISO),
   flipping ATT's systemd-boot caveat. On a non-btrfs root it falls back to a Timeshift baseline.
   Tab order is now **Start here · Setups · Backup**.
+- **Setups warnings are now rollback-aware — stop nagging once a baseline exists.** With the
+  Start-here snapper baseline, a btrfs system has *continuous* protection (snap-pac on every
+  pacman action + bootable grub-btrfs rollback), so forcing an extra snapshot before each install
+  is redundant. New `htt_setups.protection_state()` classifies coverage as `snapper` / `timeshift`
+  / `none`, and the Setups flow keys off it: **snapper** → no gate, no snapshot, a green
+  "Protected — roll back from the GRUB menu" line (fully trust the baseline); **timeshift** (ext4)
+  → take a point-in-time snapshot before a high-risk install (unchanged); **none** → gate a
+  high-risk install with a dialog pointing at the Start here tab. A one-line coverage banner sits
+  above the setup cards.
 
 ### Technical Details
 

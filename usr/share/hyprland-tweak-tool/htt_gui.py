@@ -136,10 +136,11 @@ class SetupsTab(_StatusMixin):
         outer.append(
             _intro(
                 "Each setup is installed by running its own official installer in a visible "
-                "terminal — Hyprland Tweak Tool never bundles their files. Back up first; the "
-                "installer runs as you, and asks for sudo in the terminal when it needs it."
+                "terminal — Hyprland Tweak Tool never bundles their files. The installer runs as "
+                "you, and asks for sudo in the terminal when it needs it."
             )
         )
+        outer.append(self._protection_banner())
 
         scrolled = Gtk.ScrolledWindow()
         scrolled.set_vexpand(True)
@@ -270,20 +271,46 @@ class SetupsTab(_StatusMixin):
         label = keys[variants.get_selected()] if variants is not None else keys[0]
         self._confirm_install(button, setup, label)
 
+    def _protection_banner(self):
+        """A one-line rollback-coverage banner shown above the setup cards."""
+        lbl = Gtk.Label(xalign=0)
+        lbl.set_wrap(True)
+        state = htt_setups.protection_state()
+        if state == "snapper":
+            lbl.set_markup(_state_markup(
+                True, "Protected: snapper + grub-btrfs are active — roll back any install from "
+                "the GRUB menu.", ""))
+        elif state == "timeshift":
+            lbl.set_markup("Timeshift is your fallback — a snapshot is taken before a "
+                           "system-rewriting install.")
+        else:
+            lbl.set_markup(_state_markup(
+                False, "", "No rollback set up yet — open the “Start here” tab before a "
+                "system-rewriting install."))
+        return lbl
+
     def _install_intro(self, setup):
         return (
-            f"Installing {setup.name} can change boot-critical parts of your system. A system "
-            "snapshot is your only reliable way back to Kiro Hyprland, so the install is blocked "
-            "until snapshots are ready."
+            f"Installing {setup.name} can change boot-critical parts of your system. You need a "
+            "way back first — set up a baseline, then come back and install."
+        )
+
+    def _baseline_guidance(self):
+        return (
+            "Open the “Start here” tab and set up a baseline:\n"
+            "•  on btrfs — Enable Kiro snapshots (snapper + grub-btrfs); roll back from the GRUB menu.\n"
+            "•  otherwise — set up Timeshift.\n"
+            "Then come back and install."
         )
 
     def _confirm_install(self, button, setup, label):
+        state = htt_setups.protection_state()
         high = htt_setups.needs_snapshot(setup)
-        if high:
-            ready, guidance = htt_setups.snapshot_ready()
-            if not ready:
-                _snapshot_needed_dialog(button, self._install_intro(setup), guidance)
-                return
+        # Risky install with no rollback anywhere → gate; send the user to Start here.
+        if high and state == "none":
+            _snapshot_needed_dialog(button, self._install_intro(setup), self._baseline_guidance())
+            return
+
         dlg = Gtk.Window(title=f"Install {setup.name}?", transient_for=button.get_root(), modal=True)
         dlg.set_default_size(480, -1)
         box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -295,17 +322,26 @@ class SetupsTab(_StatusMixin):
         box.append(heading)
         box.append(_intro(setup.tagline))
 
-        if high:
+        snapshot_check = None
+        if state == "snapper":
+            # Continuous coverage already — no snapshot, no warning, just reassure.
+            prot = Gtk.Label(xalign=0)
+            prot.set_wrap(True)
+            prot.set_markup(_state_markup(
+                True, "Protected: snapper + grub-btrfs are active. If this breaks your system, roll "
+                "back from the GRUB menu (Arch Linux snapshots) — no snapshot needed here.", ""))
+            box.append(prot)
+        elif high:
+            # state == "timeshift": warn, and a Timeshift snapshot is taken first.
             warn = Gtk.Label(xalign=0)
             warn.add_css_class("status-error")
             warn.set_wrap(True)
             warn.set_markup(
                 f"<b>This installer {GLib.markup_escape_text(setup.changes)}</b>\n"
-                "It can leave your system unbootable. A system snapshot will be taken first — "
+                "It can leave your system unbootable. A Timeshift snapshot will be taken first — "
                 "restore it to get back to Kiro Hyprland."
             )
             box.append(warn)
-            snapshot_check = None
         else:
             box.append(
                 _intro(
@@ -322,15 +358,21 @@ class SetupsTab(_StatusMixin):
         cancel.connect("clicked", lambda _w: dlg.close())
         go = Gtk.Button(label="Install")
         go.add_css_class("destructive-action" if high else "suggested-action")
-        go.connect("clicked", self._start_install, button, setup, label, snapshot_check, dlg)
+        go.connect("clicked", self._start_install, button, setup, label, snapshot_check, state, dlg)
         buttons.append(cancel)
         buttons.append(go)
         box.append(buttons)
         dlg.set_child(box)
         dlg.present()
 
-    def _start_install(self, go_button, install_button, setup, label, snapshot_check, dlg):
-        snapshot = htt_setups.needs_snapshot(setup) or (snapshot_check is not None and snapshot_check.get_active())
+    def _start_install(self, go_button, install_button, setup, label, snapshot_check, state, dlg):
+        high = htt_setups.needs_snapshot(setup)
+        # On snapper we trust the standing baseline (snap-pac + grub-btrfs) — never an extra
+        # snapshot. Otherwise: forced before a high-risk install, or if the optional box is ticked.
+        if state == "snapper":
+            snapshot = False
+        else:
+            snapshot = (high and state == "timeshift") or (snapshot_check is not None and snapshot_check.get_active())
         if snapshot:
             ready, guidance = htt_setups.snapshot_ready()
             if not ready:

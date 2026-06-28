@@ -135,6 +135,23 @@ def snapshot_ready():
     return _timeshift_ready()
 
 
+def protection_state():
+    """Classify rollback coverage, so the Setups flow only warns when there's no way back.
+
+    - "snapper":   btrfs root with a snapper 'root' config — *continuous* coverage (snap-pac
+                   on every pacman action) plus bootable grub-btrfs rollback. This is the
+                   Start-here baseline; Setups trusts it and takes no extra snapshot.
+    - "timeshift": non-btrfs but Timeshift is configured — *point-in-time* coverage, so a fresh
+                   snapshot is taken before a high-risk install.
+    - "none":      no rollback set up yet — high-risk installs are gated until the user sets up
+                   a baseline (the Start here tab) or Timeshift.
+    """
+    if root_is_btrfs():
+        return "snapper" if os.path.exists("/etc/snapper/configs/root") else "none"
+    ready, _ = _timeshift_ready()
+    return "timeshift" if ready else "none"
+
+
 def _snapper_ready():
     if shutil.which("snapper") is None:
         return False, (
