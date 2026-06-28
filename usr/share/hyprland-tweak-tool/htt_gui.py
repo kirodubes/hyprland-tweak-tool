@@ -151,19 +151,27 @@ class SetupsTab(_StatusMixin):
         scrolled.set_child(cards)
         outer.append(scrolled)
 
+        recover = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        recover.append(
+            _intro("Tried a setup and want Kiro Hyprland back? This removes your hypr/waybar/mako/GTK "
+                   "config and rewrites Kiro's (your current one is backed up first).")
+        )
+        restore = Gtk.Button(label="Restore Kiro Hyprland")
+        restore.set_valign(Gtk.Align.CENTER)
+        restore.set_halign(Gtk.Align.END)
+        restore.set_hexpand(True)
         if htt_setups.kiro_restore_available():
-            recover = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
-            recover.append(
-                _intro("Tried a setup and want Kiro Hyprland back? This removes your hypr/waybar/mako/GTK "
-                       "config and rewrites Kiro's (your current one is backed up first).")
-            )
-            restore = Gtk.Button(label="Restore Kiro Hyprland")
-            restore.set_valign(Gtk.Align.CENTER)
-            restore.set_halign(Gtk.Align.END)
-            restore.set_hexpand(True)
             restore.connect("clicked", self._confirm_restore)
-            recover.append(restore)
-            outer.append(recover)
+        else:
+            # Always shown so it's discoverable; disabled with a reason when the
+            # kiro-hyprland golden copy isn't installed (i.e. not a KIROTUX system).
+            restore.set_sensitive(False)
+            restore.set_tooltip_text(
+                "Available on a KIROTUX install — restores from the kiro-hyprland package's golden "
+                "copy at /usr/share/kiro/kiro-hyprland, which isn't present on this system."
+            )
+        recover.append(restore)
+        outer.append(recover)
 
         outer.append(self._init_status())
         return outer

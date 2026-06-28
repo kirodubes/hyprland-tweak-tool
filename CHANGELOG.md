@@ -107,6 +107,11 @@
   old `/usr/share/kiro/hyprland/`. On a real KIROTUX system that made `kiro_restore_available()`
   return `False` — the "Restore Kiro Hyprland" button never appeared and a restore would have
   failed. Pointed `KIRO_HYPR_SOURCE` at the new path.
+- **"Restore Kiro Hyprland" is now always shown.** It used to be hidden entirely when the golden
+  copy was absent, so on any non-KIROTUX system (e.g. a dev box) it silently vanished — confusing.
+  Now it's always rendered; when the golden copy isn't present it's **disabled with a tooltip**
+  explaining it needs a KIROTUX install (the `kiro-hyprland` package at
+  `/usr/share/kiro/kiro-hyprland`).
 
 ### Technical Details
 
