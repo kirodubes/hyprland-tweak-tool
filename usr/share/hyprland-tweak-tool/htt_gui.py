@@ -50,6 +50,28 @@ def _open_url(parent, url):
     Gtk.UriLauncher.new(url).launch(parent, None, None)
 
 
+def _timeshift_needed_dialog(button, intro_text, guidance):
+    """Blocking dialog telling the user to set Timeshift up before a snapshot can run."""
+    dlg = Gtk.Window(title="Set up Timeshift first", transient_for=button.get_root(), modal=True)
+    dlg.set_default_size(480, -1)
+    box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
+    for side in ("start", "end", "top", "bottom"):
+        getattr(box, f"set_margin_{side}")(18)
+    heading = Gtk.Label(xalign=0)
+    heading.set_markup("<b>Set up Timeshift first</b>")
+    box.append(heading)
+    box.append(_intro(intro_text))
+    detail = _intro(guidance)
+    detail.set_selectable(True)
+    box.append(detail)
+    close = Gtk.Button(label="Close")
+    close.set_halign(Gtk.Align.END)
+    close.connect("clicked", lambda _w: dlg.close())
+    box.append(close)
+    dlg.set_child(box)
+    dlg.present()
+
+
 class _StatusMixin:
     """A status label in ATT-orange that auto-clears 10s after the last message."""
 
@@ -231,12 +253,19 @@ class SetupsTab(_StatusMixin):
         label = keys[variants.get_selected()] if variants is not None else keys[0]
         self._confirm_install(button, setup, label)
 
+    def _install_intro(self, setup):
+        return (
+            f"Installing {setup.name} can change boot-critical parts of your system. A Timeshift "
+            "snapshot is your only reliable way back to Kiro Hyprland, so the install is blocked "
+            "until Timeshift is ready."
+        )
+
     def _confirm_install(self, button, setup, label):
         high = htt_setups.needs_snapshot(setup)
         if high:
             ready, guidance = htt_setups.timeshift_ready()
             if not ready:
-                self._show_timeshift_needed(button, setup, guidance)
+                _timeshift_needed_dialog(button, self._install_intro(setup), guidance)
                 return
         dlg = Gtk.Window(title=f"Install {setup.name}?", transient_for=button.get_root(), modal=True)
         dlg.set_default_size(480, -1)
@@ -289,7 +318,7 @@ class SetupsTab(_StatusMixin):
             ready, guidance = htt_setups.timeshift_ready()
             if not ready:
                 dlg.close()
-                self._show_timeshift_needed(install_button, setup, guidance)
+                _timeshift_needed_dialog(install_button, self._install_intro(setup), guidance)
                 return
         dlg.close()
         install_button.set_sensitive(False)
@@ -314,32 +343,6 @@ class SetupsTab(_StatusMixin):
         else:
             self._set_status(f"{setup.name} install failed: {result.message or 'see terminal'}", error=True)
         return False
-
-    def _show_timeshift_needed(self, button, setup, guidance):
-        dlg = Gtk.Window(title="Set up Timeshift first", transient_for=button.get_root(), modal=True)
-        dlg.set_default_size(480, -1)
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
-        for side in ("start", "end", "top", "bottom"):
-            getattr(box, f"set_margin_{side}")(18)
-        heading = Gtk.Label(xalign=0)
-        heading.set_markup("<b>Set up Timeshift first</b>")
-        box.append(heading)
-        box.append(
-            _intro(
-                f"Installing {setup.name} can change boot-critical parts of your system. A Timeshift "
-                "snapshot is your only reliable way back to Kiro Hyprland, so the install is blocked "
-                "until Timeshift is ready."
-            )
-        )
-        detail = _intro(guidance)
-        detail.set_selectable(True)
-        box.append(detail)
-        close = Gtk.Button(label="Close")
-        close.set_halign(Gtk.Align.END)
-        close.connect("clicked", lambda _w: dlg.close())
-        box.append(close)
-        dlg.set_child(box)
-        dlg.present()
 
     def _show_reboot_dialog(self, button, heading_text, detail):
         dlg = Gtk.Window(title="Reboot to apply", transient_for=button.get_root(), modal=True)
@@ -370,6 +373,61 @@ class SetupsTab(_StatusMixin):
             subprocess.Popen(["systemctl", "reboot"])
         except OSError as exc:
             self._set_status(f"Could not reboot: {exc} — reboot manually.", error=True)
+
+
+class BackupTab(_StatusMixin):
+    """Take a full-system Timeshift snapshot on demand."""
+
+    def __init__(self):
+        self._status = None
+        self._status_timeout = 0
+        self.widget = self._build()
+
+    def _build(self):
+        outer = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=10)
+        for side in ("start", "end", "top", "bottom"):
+            getattr(outer, f"set_margin_{side}")(14)
+        outer.append(_section("Backup"))
+        outer.append(
+            _intro(
+                "Take a full-system Timeshift snapshot you can roll back to — your way out if a setup "
+                "breaks the system. It runs in a visible terminal and asks for sudo there."
+            )
+        )
+        row = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+        row.set_halign(Gtk.Align.START)
+        backup = Gtk.Button(label="Back up now")
+        backup.add_css_class("suggested-action")
+        backup.connect("clicked", self._on_backup)
+        row.append(backup)
+        outer.append(row)
+        outer.append(self._init_status())
+        return outer
+
+    def _on_backup(self, button):
+        ready, guidance = htt_setups.timeshift_ready()
+        if not ready:
+            _timeshift_needed_dialog(
+                button,
+                "A backup takes a full Timeshift system snapshot — your way back if a setup breaks.",
+                guidance,
+            )
+            return
+        button.set_sensitive(False)
+        self._set_status("Creating a Timeshift snapshot — follow the terminal…")
+
+        def on_done(result):
+            GLib.idle_add(self._backup_finished, button, result)
+
+        htt_setups.run_async(htt_setups.manual_snapshot_command(), on_done)
+
+    def _backup_finished(self, button, result):
+        button.set_sensitive(True)
+        if result.ok:
+            self._set_status("Backup snapshot created.")
+        else:
+            self._set_status(f"Backup failed: {result.message or 'see terminal'}", error=True)
+        return False
 
 
 def _show_support_dialog(window):
@@ -449,6 +507,7 @@ def build(window, hyprland_version):
     notebook.set_scrollable(True)
     notebook.set_vexpand(True)
     notebook.append_page(SetupsTab().widget, Gtk.Label(label="Setups"))
+    notebook.append_page(BackupTab().widget, Gtk.Label(label="Backup"))
     root.append(notebook)
 
     window.set_child(root)

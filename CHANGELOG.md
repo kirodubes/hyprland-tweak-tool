@@ -40,9 +40,13 @@
 - Replaced the misleading config-only "back up ~/.config" mechanism (it couldn't undo
   boot/DM/pacman changes) with the Timeshift snapshot; removed `snapshot_now` /
   `list_backups` / `restore_backup` and the "Restore a backup…" button.
-- **Ordered the card list by reliability** — the setups that install cleanly lead
-  (ML4W, then JaKooLit), with the riskier / less-reliable ones (Omarchy, end-4, HyDE,
-  Caelestia) below.
+- **Ordered the card list safest → most hazardous** — clean dotfile installs lead
+  (ML4W, JaKooLit), heavy AUR/build ones next (end-4, Caelestia), and the
+  system-breakers **last** (HyDE rewrites GRUB/SDDM; Omarchy rewrites the pacman
+  mirrorlist). The two high-risk cards carry a red **"⚠ Can break your system"** hazard
+  badge.
+- **Dropped the superfluous variant dropdown** for single-variant setups — only ML4W
+  (Rolling/Stable) shows a picker; the rest just show the Install button.
 - **"Restore Kiro Hyprland" — the config-level way back.** The `kiro-hyprland` package
   now ships a pristine golden copy of its config at `/usr/share/kiro/hyprland/`; HTT
   reads it to **remove** the user's hypr/waybar/mako/gtk dirs and **rewrite** Kiro's
@@ -86,7 +90,7 @@
 - `htt_gui.py` gains a `_StatusMixin` (ATT-orange auto-clearing status line, UI
   marshalled via `GLib.idle_add`) and a `SetupsTab` of setup cards; `build()` now
   hosts a `Gtk.Notebook` instead of the coming-soon `_notice`. Install runs off the
-  UI thread; the GUI is a thin client of the CLI command (ADR-001).
+  UI thread; the GUI is a thin client of the install command.
 - `htt.css` adds `.setup-card` (+ reuses `.plugin-name` / `.plugin-desc`).
 
 ### Files Modified

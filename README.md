@@ -18,10 +18,9 @@ config editor for appearance, animations, keybindings, input and monitors.
 | Milestone | Scope |
 |-----------|-------|
 | **M0** | Scaffold — GTK4 skeleton, launcher, desktop entry. *(done)* |
-| **M1** | Setups hub — install community setups via their own installers; ML4W first, backup/restore. *(in progress — ML4W done)* |
-| **M2** | More setups — Omarchy, end-4, HyDE, Caelestia… one deliberate registry entry at a time. *(planned)* |
-| **M3** | Appearance / Animations / Input — config editor, behind a GUI-owned override layer the Lua sources. *(planned)* |
-| **M4** | Package for the private `kirotux-repo`. *(planned)* |
+| **M1** | Setups hub — install the community setups (ML4W, JaKooLit, Omarchy, end-4, HyDE, Caelestia) via their own installers, with risk markers, Timeshift safety, and a Restore action. *(done)* |
+| **M2** | Config editor — Appearance / Animations / Input, via a GUI-owned override file the Lua config sources. *(planned)* |
+| **M3** | Backup & recovery tab — manual snapshot, rollback. *(planned)* |
 
 ## Requirements
 

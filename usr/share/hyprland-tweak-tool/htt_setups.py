@@ -67,6 +67,11 @@ def _snapshot_command(setup):
     return f"sudo timeshift --create --comments 'HTT: before {setup.id}' --scripted"
 
 
+def manual_snapshot_command():
+    """A standalone full-system Timeshift snapshot the user can take any time."""
+    return "sudo timeshift --create --comments 'HTT: manual backup' --scripted"
+
+
 def needs_snapshot(setup):
     """True when a setup is risky enough that a Timeshift snapshot is mandatory."""
     return setup.risk == "high"
