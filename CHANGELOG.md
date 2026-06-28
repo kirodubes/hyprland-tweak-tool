@@ -47,6 +47,14 @@
   badge.
 - **Dropped the superfluous variant dropdown** for single-variant setups — only ML4W
   (Rolling/Stable) shows a picker; the rest just show the Install button.
+- **Added a Backup tab** with a "Back up now" on-demand full-system snapshot (same
+  snapshot-ready pre-check as installs). The snapshot-needed dialog is now a shared
+  module-level helper used by both the install flow and the Backup tab.
+- **Snapshot backend is now filesystem-aware** — `snapshot_backend()` picks **snapper**
+  on a btrfs root (`snapper -c root create`; bootable rollback from the GRUB menu with
+  grub-btrfs) and falls back to **Timeshift** on ext4 and others. `snapshot_ready()`
+  gives backend-specific setup guidance; all user-facing wording is now neutral
+  ("system snapshot" rather than naming a tool).
 - **"Restore Kiro Hyprland" — the config-level way back.** The `kiro-hyprland` package
   now ships a pristine golden copy of its config at `/usr/share/kiro/hyprland/`; HTT
   reads it to **remove** the user's hypr/waybar/mako/gtk dirs and **rewrite** Kiro's

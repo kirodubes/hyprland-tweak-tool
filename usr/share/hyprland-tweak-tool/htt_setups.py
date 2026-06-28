@@ -63,13 +63,32 @@ class Setup:
 # A pre-install system snapshot is the only dependable way back to a bootable
 # Kiro Hyprland after a system-rewriting installer. Kiro ships Timeshift; the
 # snapshot runs in the visible terminal so the user authenticates sudo there.
-def _snapshot_command(setup):
-    return f"sudo timeshift --create --comments 'HTT: before {setup.id}' --scripted"
+def _root_is_btrfs():
+    try:
+        with open("/proc/mounts", encoding="utf-8") as f:
+            for line in f:
+                parts = line.split()
+                if len(parts) >= 3 and parts[1] == "/" and parts[2] == "btrfs":
+                    return True
+    except OSError:
+        pass
+    return False
 
 
-def manual_snapshot_command():
-    """A standalone full-system Timeshift snapshot the user can take any time."""
-    return "sudo timeshift --create --comments 'HTT: manual backup' --scripted"
+def snapshot_backend():
+    """Pick the snapshot tool by filesystem: snapper on a btrfs root, Timeshift otherwise.
+
+    btrfs + snapper + grub-btrfs gives bootable rollback snapshots in the GRUB menu — the real
+    way back from a broken install. Timeshift is the portable fallback on ext4 and friends.
+    """
+    return "snapper" if _root_is_btrfs() else "timeshift"
+
+
+def snapshot_command(comment):
+    """The create-snapshot command for the active backend (runs with sudo in the terminal)."""
+    if snapshot_backend() == "snapper":
+        return f"sudo snapper -c root create -d '{comment}'"
+    return f"sudo timeshift --create --comments '{comment}' --scripted"
 
 
 def needs_snapshot(setup):
@@ -104,8 +123,28 @@ def restore_kiro_hyprland():
     return backup if backed_up else None
 
 
-def timeshift_ready():
-    """Return (ready, guidance). ready=False blocks a required snapshot; guidance tells the user why."""
+def snapshot_ready():
+    """Return (ready, guidance) for the active backend; ready=False blocks a required snapshot."""
+    if snapshot_backend() == "snapper":
+        return _snapper_ready()
+    return _timeshift_ready()
+
+
+def _snapper_ready():
+    if shutil.which("snapper") is None:
+        return False, (
+            "This is a btrfs system but snapper is not installed — it gives you bootable rollback "
+            "snapshots from the GRUB menu. Install it:  sudo pacman -S snapper snap-pac grub-btrfs"
+        )
+    if not os.path.exists("/etc/snapper/configs/root"):
+        return False, (
+            "snapper is installed but has no 'root' config. Create one:  "
+            "sudo snapper -c root create-config /  — then try again."
+        )
+    return True, ""
+
+
+def _timeshift_ready():
     if shutil.which("timeshift") is None:
         return False, (
             "Timeshift is not installed — it is your way back if an install breaks the system. "
@@ -132,10 +171,10 @@ def timeshift_ready():
 
 
 def install_command(setup, label, snapshot):
-    """The full command for a variant, optionally prefixed with a Timeshift snapshot."""
+    """The full command for a variant, optionally prefixed with a system snapshot."""
     cmd = setup.variants[label]
     if snapshot:
-        return f"{_snapshot_command(setup)} && {cmd}"
+        return f"{snapshot_command('HTT: before ' + setup.id)} && {cmd}"
     return cmd
 
 
