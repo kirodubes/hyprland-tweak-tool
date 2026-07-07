@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026.07.07
+
+### What Changed
+
+- **Snapshot safeguard is now bypassable** — when a high-risk setup (HyDE, Omarchy) is
+  clicked on a system with no rollback set up, the "Set up snapshots first" gate still
+  appears (open Start here → snapper, or set up Timeshift), but it now also offers an
+  **Install anyway** escape hatch. Choosing it waives the mandatory snapshot and proceeds
+  straight to the install confirmation, which shows a distinct red "no snapshot to restore
+  — continue at your own risk" warning instead of the (false, for this path) promise that a
+  Timeshift snapshot will be taken. Safe default unchanged; the user can now knowingly
+  override it.
+
+### Technical Details
+
+- `_snapshot_needed_dialog` gained an optional `on_bypass` callback; when set it renders a
+  destructive "Install anyway" button beside Close that closes the dialog and invokes it.
+- `_confirm_install` gained a `bypass=False` flag. The `high and state == "none"` gate now
+  only fires when not bypassing, and passes `on_bypass` a lambda that re-enters
+  `_confirm_install(..., bypass=True)`.
+- The confirm-dialog body split the single `elif high` branch into `high and state ==
+  "timeshift"` (snapshot-will-be-taken) vs `high` with no rollback (no-safety-net warning),
+  so the bypass path no longer promises a snapshot it won't take. `_start_install` already
+  yields `snapshot=False` for `state == "none"`, so no snapshot is attempted.
+
+### Files Modified
+
+- `usr/share/hyprland-tweak-tool/htt_gui.py`
+
 ## 2026.06.28
 
 ### What Changed

@@ -67,8 +67,12 @@ def _open_url(parent, url):
     Gtk.UriLauncher.new(url).launch(parent, None, None)
 
 
-def _snapshot_needed_dialog(button, intro_text, guidance):
-    """Blocking dialog telling the user to set up snapshots before one can run."""
+def _snapshot_needed_dialog(button, intro_text, guidance, on_bypass=None):
+    """Blocking dialog telling the user to set up snapshots before one can run.
+
+    When `on_bypass` is given, an extra "Install anyway" button lets the user waive
+    the safeguard and proceed with no snapshot — it closes the dialog and calls it.
+    """
     dlg = Gtk.Window(title="Set up snapshots first", transient_for=button.get_root(), modal=True)
     dlg.set_default_size(480, -1)
     box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=12)
@@ -81,10 +85,18 @@ def _snapshot_needed_dialog(button, intro_text, guidance):
     detail = _intro(guidance)
     detail.set_selectable(True)
     box.append(detail)
+    buttons = Gtk.Box(orientation=Gtk.Orientation.HORIZONTAL, spacing=8)
+    buttons.set_halign(Gtk.Align.END)
+    if on_bypass is not None:
+        bypass = Gtk.Button(label="Install anyway")
+        bypass.add_css_class("destructive-action")
+        bypass.set_tooltip_text("Skip the snapshot and install now — you will have no way back if it breaks")
+        bypass.connect("clicked", lambda _w: (dlg.close(), on_bypass()))
+        buttons.append(bypass)
     close = Gtk.Button(label="Close")
-    close.set_halign(Gtk.Align.END)
     close.connect("clicked", lambda _w: dlg.close())
-    box.append(close)
+    buttons.append(close)
+    box.append(buttons)
     dlg.set_child(box)
     dlg.present()
 
@@ -272,12 +284,18 @@ class SetupsTab(_StatusMixin):
             "Then come back and install."
         )
 
-    def _confirm_install(self, button, setup, label):
+    def _confirm_install(self, button, setup, label, bypass=False):
         state = htt_setups.protection_state()
         high = htt_setups.needs_snapshot(setup)
         # Risky install with no rollback anywhere → gate; send the user to Start here.
-        if high and state == "none":
-            _snapshot_needed_dialog(button, self._install_intro(setup), self._baseline_guidance())
+        # The gate offers an "Install anyway" bypass that re-enters here with bypass=True.
+        if high and state == "none" and not bypass:
+            _snapshot_needed_dialog(
+                button,
+                self._install_intro(setup),
+                self._baseline_guidance(),
+                on_bypass=lambda: self._confirm_install(button, setup, label, bypass=True),
+            )
             return
 
         dlg = Gtk.Window(title=f"Install {setup.name}?", transient_for=button.get_root(), modal=True)
@@ -301,8 +319,8 @@ class SetupsTab(_StatusMixin):
                 "menu (Arch Linux snapshots); revert your desktop config with Restore Kiro Hyprland. "
                 "No snapshot needed here.", ""))
             box.append(prot)
-        elif high:
-            # state == "timeshift": warn, and a Timeshift snapshot is taken first.
+        elif high and state == "timeshift":
+            # warn, and a Timeshift snapshot is taken first.
             warn = Gtk.Label(xalign=0)
             warn.add_css_class("status-error")
             warn.set_wrap(True)
@@ -310,6 +328,17 @@ class SetupsTab(_StatusMixin):
                 f"<b>This installer {GLib.markup_escape_text(setup.changes)}</b>\n"
                 "It can leave your system unbootable. A Timeshift snapshot will be taken first — "
                 "restore it to get back to Kiro Hyprland."
+            )
+            box.append(warn)
+        elif high:
+            # state == "none": the user waived the snapshot gate — no safety net.
+            warn = Gtk.Label(xalign=0)
+            warn.add_css_class("status-error")
+            warn.set_wrap(True)
+            warn.set_markup(
+                f"<b>This installer {GLib.markup_escape_text(setup.changes)}</b>\n"
+                "No rollback is set up, so there is <b>no snapshot to restore</b> if it breaks your "
+                "system. You chose to skip the safeguard — continue at your own risk."
             )
             box.append(warn)
         else:
